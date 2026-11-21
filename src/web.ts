@@ -74,7 +74,10 @@ async function handleJoin(req: http.IncomingMessage, res: http.ServerResponse, u
     return true;
   }
   if (p === '/web/join' && req.method === 'POST') {
-    const ip = String(req.headers['x-forwarded-for'] ?? req.socket.remoteAddress ?? '').split(',')[0].trim();
+    // The RIGHT-most X-Forwarded-For entry is the one Cloud Run's front end appends; the first is
+    // whatever the client sent, so keying on it would let anyone fill the 20 slots by faking it.
+    const forwarded = String(req.headers['x-forwarded-for'] ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+    const ip = forwarded[forwarded.length - 1] ?? req.socket.remoteAddress ?? '';
     if (!joinAllowed(ip)) { send(res, 429, { ok: false, error: 'Too many tries. Give it a few minutes.' }); return true; }
     const body = JSON.parse((await readRaw(req, 4 * 1024)).toString('utf8') || '{}');
     const phone = toE164(String(body.phone ?? ''));

@@ -28,15 +28,18 @@
     :focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; border-radius: 8px; }
     .hidden, body.boot main, body.empty .studio, body:not(.empty) .landing, body.empty .reels-only { display: none !important; }
 
+    /* Buttons are flat fills, never outlines; hover deepens the fill instead of moving the button. */
     .btn {
-      display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 16px; border-radius: 999px;
-      font-weight: 700; font-size: 14px; border: 2px solid var(--ink); background: #fff; color: var(--ink);
-      text-decoration: none; white-space: nowrap; transition: transform .35s var(--taffy);
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 11px 18px; border-radius: 999px;
+      font-weight: 700; font-size: 14px; border: 0; background: rgba(54, 17, 24, .09); color: var(--ink);
+      text-decoration: none; white-space: nowrap; transition: background .25s var(--ease), color .25s var(--ease), transform .2s var(--ease);
     }
-    .btn:hover { transform: translateY(-2px); }
-    .btn:active { transform: translateY(1px) scale(.97); }
+    .btn:hover { background: rgba(54, 17, 24, .16); }
+    .btn:active { transform: translateY(1px); }
     .btn.ink { background: var(--ink); color: var(--yellow); }
-    .btn.yellow { background: var(--yellow); }
+    .btn.ink:hover { background: #4d1a24; }
+    .btn.yellow { background: var(--yellow); color: var(--ink); }
+    .btn.yellow:hover { background: #fffd6e; }
     .btn[disabled] { opacity: .45; pointer-events: none; }
 
     /* ---------- top bar ---------- */
@@ -89,18 +92,18 @@
     .dropzone { position: fixed; inset: 0; background: rgba(54, 17, 24, .92); color: var(--yellow); display: none; place-items: center; z-index: 40; pointer-events: none; font-family: var(--display); font-style: italic; font-weight: 900; font-size: clamp(36px, 7vw, 64px); }
     body.over .dropzone { display: grid; }
 
-    .uploads { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); width: min(420px, calc(100vw - 32px)); background: #fff; border: 2px solid var(--ink); border-radius: 20px; padding: 14px 16px; display: grid; gap: 8px; box-shadow: var(--shadow); z-index: 30; }
+    .uploads { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); width: min(420px, calc(100vw - 32px)); background: var(--ink); color: var(--cream); border-radius: 22px; padding: 14px 18px; display: grid; gap: 8px; box-shadow: var(--shadow); z-index: 30; }
     .uploads:empty { display: none; }
     .up { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; font-size: 13px; }
     .up .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .up .pct { color: var(--ink-2); font-variant-numeric: tabular-nums; }
-    .bar { grid-column: 1 / -1; height: 6px; border-radius: 6px; background: var(--line); overflow: hidden; }
-    .bar i { display: block; height: 100%; width: 0; background: var(--ink); border-radius: 6px; transition: width .25s var(--ease); }
+    .up .pct { color: rgba(255, 254, 240, .6); font-variant-numeric: tabular-nums; }
+    .bar { grid-column: 1 / -1; height: 6px; border-radius: 6px; background: rgba(255, 254, 240, .14); overflow: hidden; }
+    .bar i { display: block; height: 100%; width: 0; background: var(--yellow); border-radius: 6px; transition: width .25s var(--ease); }
 
     /* ---------- studio: the reel and a conversation, on one screen ---------- */
-    .studio { max-width: 1180px; margin: 0 auto; padding: 0 20px 20px; display: grid; grid-template-columns: auto minmax(0, 560px); justify-content: center; gap: 24px; height: calc(100dvh - var(--top)); }
+    .studio { max-width: 1180px; margin: 0 auto; padding: 0 20px 40px; display: grid; grid-template-columns: auto minmax(0, 560px); justify-content: center; gap: 24px; height: calc(100dvh - var(--top)); }
     .player { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
-    .screen { height: min(calc(100dvh - var(--top) - 124px), 860px); aspect-ratio: 9 / 16; border-radius: 24px; overflow: hidden; background: #140609; display: grid; place-items: center; border: 2px solid var(--ink); }
+    .screen { height: min(calc(100dvh - var(--top) - 146px), 860px); aspect-ratio: 9 / 16; border-radius: 26px; overflow: hidden; background: var(--ink); display: grid; place-items: center; }
     .screen video { width: 100%; height: 100%; object-fit: cover; display: block; background: #000; }
     .screen .wait { color: var(--yellow); text-align: center; padding: 24px; }
     .screen .wait b { display: block; font-family: var(--display); font-style: italic; font-weight: 900; font-size: 26px; line-height: 1.15; }
@@ -109,23 +112,30 @@
     @keyframes drip { 0%,100% { transform: rotate(-45deg) translateY(0) scale(1) } 50% { transform: rotate(-45deg) translate(6px,-6px) scale(1.12) } }
     .versions { display: flex; gap: 6px; flex-wrap: wrap; }
     .versions:empty { display: none; }
-    .vtab { padding: 6px 12px; border-radius: 999px; border: 1.5px solid var(--ink-3); font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
-    .vtab[aria-selected="true"] { background: var(--ink); color: var(--yellow); border-color: var(--ink); }
-    .player-actions { display: flex; gap: 8px; }
-    .player-actions .btn { flex: 1; padding: 10px 12px; }
+    .vtab { padding: 6px 12px; border-radius: 999px; background: rgba(54, 17, 24, .09); font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; transition: background .2s; }
+    .vtab:hover { background: rgba(54, 17, 24, .16); }
+    .vtab[aria-selected="true"] { background: var(--ink); color: var(--yellow); }
+    /* Keep / Download / Edit live as one ink control bar. */
+    .player-actions { display: flex; gap: 4px; padding: 4px; border-radius: 999px; background: var(--ink); }
+    .player-actions .btn { flex: 1; padding: 10px 12px; background: transparent; color: var(--yellow); }
+    .player-actions .btn:hover { background: rgba(253, 251, 4, .12); }
+    .player-actions .btn.yellow { background: var(--yellow); color: var(--ink); }
+    .player-actions .btn.yellow[disabled] { background: transparent; color: var(--yellow); opacity: .55; }
+    .player-actions :focus-visible, .panel :focus-visible { outline-color: var(--yellow); }
 
-    .panel { background: #fff; border: 2px solid var(--ink); border-radius: 30px; box-shadow: var(--shadow); padding: 20px; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+    .panel { --hang: 40px; position: relative; color: var(--cream); padding: 22px; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+    .panel > :not(.goo) { position: relative; }
     .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-    .head h3 { font-family: var(--display); font-style: italic; font-weight: 900; font-size: 26px; line-height: 1.1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .status { display: inline-flex; align-items: center; gap: 7px; padding: 6px 11px; border-radius: 999px; font-size: 12px; font-weight: 700; background: var(--cream); border: 1.5px solid var(--line); white-space: nowrap; }
-    .status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-3); }
-    .status.live .dot { background: var(--ink); animation: pulse 1.2s ease-in-out infinite; }
-    .status.ready { background: var(--yellow); border-color: var(--ink); }
+    .head h3 { color: var(--yellow); font-family: var(--display); font-style: italic; font-weight: 900; font-size: 26px; line-height: 1.1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .status { display: inline-flex; align-items: center; gap: 7px; padding: 6px 11px; border-radius: 999px; font-size: 12px; font-weight: 700; background: rgba(255, 254, 240, .08); color: var(--cream); white-space: nowrap; }
+    .status .dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255, 254, 240, .4); }
+    .status.live .dot { background: var(--yellow); animation: pulse 1.2s ease-in-out infinite; }
+    .status.ready { background: var(--yellow); color: var(--ink); }
     .status.ready .dot { background: var(--ok); }
-    .status.bad .dot { background: var(--warn); }
+    .status.bad .dot { background: #FF7A59; }
     @keyframes pulse { 50% { transform: scale(1.6); opacity: .4 } }
 
-    .why { border-radius: 20px; padding: 14px 16px; background: var(--yellow); flex: none; max-height: 34%; overflow-y: auto; }
+    .why { border-radius: 20px; padding: 14px 16px; background: var(--yellow); color: var(--ink); flex: none; max-height: 34%; overflow-y: auto; }
     .why:empty { display: none; }
     .why .technique { font-family: var(--display); font-style: italic; font-weight: 900; font-size: 20px; line-height: 1.15; }
     .why p { margin-top: 6px; font-size: 14px; }
@@ -133,30 +143,30 @@
     .why .tags a { text-underline-offset: 3px; }
     .ai { display: inline-block; padding: 1px 8px; border-radius: 999px; background: var(--ink); color: var(--yellow); font-size: 11px; font-weight: 700; }
 
-    .chat { flex: 1; min-height: 80px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px; }
+    .chat { flex: 1; min-height: 80px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px; scrollbar-width: thin; scrollbar-color: rgba(255, 254, 240, .2) transparent; }
     .bubble { max-width: 82%; padding: 9px 13px; border-radius: 18px; font-size: 14px; line-height: 1.4; white-space: pre-wrap; word-wrap: break-word; }
-    .bubble.you { align-self: flex-end; background: var(--ink); color: var(--yellow); border-bottom-right-radius: 6px; }
-    .bubble.sticky { align-self: flex-start; background: var(--cream); border: 1px solid var(--line); border-bottom-left-radius: 6px; }
+    .bubble.you { align-self: flex-end; background: var(--yellow); color: var(--ink); border-bottom-right-radius: 6px; }
+    .bubble.sticky { align-self: flex-start; background: rgba(255, 254, 240, .09); border-bottom-left-radius: 6px; }
     .chips { display: flex; gap: 6px; flex-wrap: wrap; }
     .chips.suggest { align-items: center; }
-    .suggest-label { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); margin-right: 2px; }
-    .chip.vote { background: var(--yellow); border-color: var(--ink); }
-    .chip.vote[disabled] { background: #fff; opacity: .6; cursor: default; }
-    .chip { padding: 6px 11px; border-radius: 999px; border: 1.5px solid var(--line); font-size: 13px; font-weight: 600; transition: border-color .2s, transform .3s var(--taffy); }
-    .chip:hover { border-color: var(--ink); transform: translateY(-1px); }
+    .suggest-label { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: rgba(255, 254, 240, .55); margin-right: 2px; }
+    .chip.vote { background: var(--yellow); color: var(--ink); }
+    .chip.vote[disabled] { background: transparent; color: var(--yellow); opacity: .55; cursor: default; }
+    .chip { padding: 7px 12px; border-radius: 999px; background: rgba(253, 251, 4, .1); color: var(--yellow); font-size: 13px; font-weight: 600; transition: background .2s, color .2s; }
+    .chip:hover { background: var(--yellow); color: var(--ink); }
     .composer { display: flex; gap: 8px; }
-    .field { flex: 1; min-width: 0; border: 1.5px solid var(--line); border-radius: 999px; padding: 11px 16px; font: inherit; font-size: 14px; color: var(--ink); background: #fff; }
-    .field::placeholder { color: var(--ink-3); }
-    .field:focus { outline: none; border-color: var(--ink); }
+    .field { flex: 1; min-width: 0; border: 0; border-radius: 999px; padding: 12px 16px; font: inherit; font-size: 14px; color: var(--cream); background: rgba(255, 254, 240, .08); transition: background .2s, box-shadow .2s; }
+    .field::placeholder { color: rgba(255, 254, 240, .42); }
+    .field:focus { outline: none; background: rgba(255, 254, 240, .12); box-shadow: 0 0 0 2px rgba(253, 251, 4, .55); }
 
     .earlier { font-size: 13px; }
-    .earlier summary { cursor: pointer; font-weight: 700; color: var(--ink-2); list-style: none; }
+    .earlier summary { cursor: pointer; font-weight: 700; color: rgba(255, 254, 240, .6); list-style: none; }
     .earlier summary::-webkit-details-marker { display: none; }
     .earlier summary::after { content: " ↓"; }
     .earlier[open] summary::after { content: " ↑"; }
     .earlier .list { display: grid; gap: 4px; margin-top: 8px; max-height: 160px; overflow-y: auto; }
-    .hrow { display: flex; align-items: center; gap: 10px; text-align: left; padding: 8px 10px; border-radius: 12px; background: var(--cream); }
-    .hrow:hover { background: var(--yellow); }
+    .hrow { display: flex; align-items: center; gap: 10px; text-align: left; padding: 8px 10px; border-radius: 12px; background: rgba(255, 254, 240, .06); color: var(--cream); transition: background .2s; }
+    .hrow:hover { background: rgba(253, 251, 4, .14); }
     .hrow b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
     .toast {
@@ -169,7 +179,7 @@
 
     /* Narrow screens stack the reel over the conversation and let the page scroll. */
     @media (max-width: 860px) {
-      .studio { grid-template-columns: 1fr; height: auto; padding: 0 16px 24px; }
+      .studio { grid-template-columns: 1fr; height: auto; padding: 0 16px 40px; }
       .player { align-items: center; }
       .screen { height: auto; width: min(100%, 360px); }
       .player-actions, .versions { width: min(100%, 360px); }
@@ -213,7 +223,7 @@
     <div class="player">
       <div class="screen" id="screen"></div>
       <div class="versions" id="versions" role="tablist" aria-label="Versions"></div>
-      <div class="player-actions">
+      <div class="player-actions" id="actions">
         <button class="btn yellow" id="keepBtn" type="button">Keep</button>
         <a class="btn" id="downloadBtn" download>Download</a>
         <button class="btn ink" id="liveBtn" type="button">Edit live</button>
@@ -221,6 +231,11 @@
     </div>
 
     <section class="panel">
+      <span class="goo" aria-hidden="true">
+        <span class="slab"></span>
+        <span class="honey" style="--x: 21%; --w: 11px; --h: 24px"></span>
+        <span class="honey" style="--x: 72%; --w: 15px; --h: 36px"></span>
+      </span>
       <div class="head">
         <h3 id="projTitle">Your reel</h3>
         <span class="status" id="projStatus"><span class="dot"></span><span id="projStatusText">Waiting</span></span>
@@ -235,7 +250,7 @@
       </div>
       <form class="composer" id="composer" autocomplete="off">
         <input class="field" id="say" maxlength="500" placeholder="Text a change" aria-label="Message the editor" />
-        <button class="btn ink" type="submit">Send</button>
+        <button class="btn yellow" type="submit">Send</button>
       </form>
       <details class="earlier hidden" id="history">
         <summary id="historySum">Earlier reels</summary>
@@ -453,7 +468,7 @@
         $('keepBtn').disabled = true;
       }
       // Nothing to keep, download, open live or tweak until there's a cut.
-      for (const id of ['keepBtn', 'downloadBtn', 'liveBtn', 'chips']) $(id).classList.toggle('hidden', !v);
+      for (const id of ['actions', 'chips']) $(id).classList.toggle('hidden', !v);
 
       // why this cut: the technique, one paragraph, the source and any AI-made parts
       if (v) {

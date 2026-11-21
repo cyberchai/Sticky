@@ -18,6 +18,7 @@ import { startWorker } from './jobs.js';
 import { verifyLinqSignature } from './linq.js';
 import { handleWeb } from './web.js';
 import { handleLive } from './live.js';
+import { handleReels } from './reels.js';
 import { errMsg, log } from './log.js';
 import { migrate } from './migrate.js';
 import { readStream, sizeOf } from './store.js';
@@ -110,6 +111,7 @@ async function route(req: http.IncomingMessage, res: http.ServerResponse): Promi
 
   if (await handleWeb(req, res, url)) return;
   if (await handleLive(req, res, url)) return;
+  if (await handleReels(req, res, url)) return;
 
   if (req.method === 'POST' && path === '/webhooks/linq') {
     const body = await readBody(req);

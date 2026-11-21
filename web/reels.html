@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>sticky live</title>
+  <meta name="theme-color" content="#FDFB04" />
+  <link rel="icon" href="/assets/sticky-mark.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700&display=swap" rel="stylesheet" />
+  <style>
+    :root { --yellow: #FDFB04; --ink: #361118; --ink-2: rgba(54, 17, 24, .6); --line: rgba(54, 17, 24, .12); --warn: #A23B1B; --taffy: cubic-bezier(.34, 1.56, .64, 1); }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--yellow); color: var(--ink); -webkit-font-smoothing: antialiased; min-height: 100dvh; }
+    a { color: inherit; }
+    button { font: inherit; cursor: pointer; border: 0; background: none; }
+    :focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; border-radius: 8px; }
+    .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+    main { width: min(440px, 100%); margin: 0 auto; padding: clamp(24px, 6vh, 56px) 16px 40px; display: grid; gap: 22px; }
+    .mark { display: block; height: 40px; width: auto; }
+    form { display: grid; gap: 10px; }
+    input { width: 100%; border: 2px solid var(--ink); border-radius: 16px; padding: 16px 18px; background: #fff; font: inherit; font-size: 19px; color: var(--ink); text-align: center; font-variant-numeric: tabular-nums; }
+    input:focus { outline: none; box-shadow: 0 0 0 4px rgba(54, 17, 24, .15); }
+    .btn { display: flex; align-items: center; justify-content: center; padding: 17px; border-radius: 16px; background: var(--ink); color: var(--yellow); font-weight: 700; font-size: 17px; text-decoration: none; transition: transform .35s var(--taffy); }
+    .btn:active { transform: scale(.97); }
+    .btn[disabled] { opacity: .5; pointer-events: none; }
+    .msg { min-height: 1.4em; font-size: 14px; text-align: center; color: var(--ink-2); }
+    .msg.err { color: var(--warn); font-weight: 700; }
+    h2 { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); margin: 6px 4px 8px; }
+    .reel { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 16px; background: #fff; border: 2px solid transparent; text-decoration: none; margin-bottom: 8px; transition: transform .35s var(--taffy), border-color .2s; }
+    .reel:hover { border-color: var(--ink); transform: translateX(3px); }
+    .reel .t { flex: 1; min-width: 0; }
+    .reel b { display: block; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .reel small { color: var(--ink-2); font-size: 13px; }
+    .reel .go { font-weight: 700; font-size: 14px; white-space: nowrap; }
+    .foot { display: flex; justify-content: space-between; font-size: 13px; color: var(--ink-2); }
+    .foot button { text-decoration: underline; text-underline-offset: 3px; color: inherit; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <main>
+    <img class="mark" src="/assets/sticky-mark.svg" alt="sticky" />
+    <form id="who" class="hidden" autocomplete="on">
+      <label class="sr" for="phone">Your phone number</label>
+      <input id="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="Your phone number" required />
+      <button class="btn" type="submit">Open my reels</button>
+    </form>
+    <div class="msg" id="msg" role="status"></div>
+    <div id="list"></div>
+    <div class="foot hidden" id="foot"><span id="who-label"></span><button type="button" id="change">Not you?</button></div>
+  </main>
+  <script>
+    (() => {
+      const $ = (id) => document.getElementById(id);
+      const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      const store = {
+        get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+        set(k, v) { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch {} },
+      };
+      function ago(iso) {
+        const s = (Date.now() - new Date(iso).getTime()) / 1000;
+        if (s < 60) return 'just now';
+        if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+        if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+        return new Date(iso).toLocaleDateString();
+      }
+      const reelLink = (r) => `<a class="reel" href="${esc(r.url)}"><span class="t"><b>${esc(r.title)}</b><small>v${r.versions} · ${esc(ago(r.updatedAt))}${r.access === 'guest' ? ' · as guest' : ''}</small></span><span class="go">Open live →</span></a>`;
+
+      const listAll = new URLSearchParams(location.search).has('all');
+      const savedThread = store.get('sticky.thread');
+      const thread = /^[a-f0-9]{32}$/.test(savedThread || '') ? savedThread : null;
+      let phone = store.get('sticky.phone');
+
+      function setPhone(value) {
+        phone = value;
+        store.set('sticky.phone', value);
+      }
+
+      function say(text, err = false) {
+        $('msg').textContent = text;
+        $('msg').classList.toggle('err', err);
+      }
+
+      function ask(text = '', err = false) {
+        $('who').classList.remove('hidden');
+        $('list').innerHTML = '';
+        $('foot').classList.add('hidden');
+        say(text, err);
+        $('phone').focus();
+      }
+
+      async function load() {
+        say('Finding your reels…');
+        const headers = {};
+        if (phone) headers['X-Sticky-Phone'] = phone;
+        if (thread) headers['X-Sticky-Thread'] = thread;
+        let res;
+        try {
+          res = await fetch('/live-api/mine', { cache: 'no-store', headers });
+        } catch {
+          return ask('Couldn’t reach Sticky. Try again.', true);
+        }
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          if (phone) setPhone(null);
+          return ask(body.error || 'Something went wrong.', true);
+        }
+        if (!listAll && body.latest) {
+          say('Opening your latest reel…');
+          location.replace(body.latest);
+          return;
+        }
+        $('who').classList.add('hidden');
+        $('foot').classList.remove('hidden');
+        $('who-label').textContent = body.phone ? `Reels for ${body.phone}` : 'Reels made in this browser';
+        if (!body.sections.length) {
+          say('No reels yet. Text your footage to Sticky, or drop it on the home page.');
+          $('list').innerHTML = '<a class="btn" href="/">Make a reel</a>';
+          return;
+        }
+        say('');
+        $('list').innerHTML = body.sections.map((s) => `<section><h2>${esc(s.label)}</h2>${s.reels.map(reelLink).join('')}</section>`).join('');
+      }
+
+      $('who').addEventListener('submit', (e) => {
+        e.preventDefault();
+        setPhone($('phone').value.trim());
+        $('who').classList.add('hidden');
+        load();
+      });
+      $('change').addEventListener('click', () => { setPhone(null); ask(); });
+
+      if (phone || thread) load();
+      else ask();
+    })();
+  </script>
+</body>
+</html>
