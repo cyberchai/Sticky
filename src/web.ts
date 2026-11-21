@@ -52,7 +52,8 @@ function joinAllowed(ip: string): boolean {
 
 function isAdmin(req: http.IncomingMessage, url: URL): boolean {
   if (!config.adminToken) return false;
-  const given = String(req.headers.authorization ?? '').replace(/^Bearer\s+/i, '') || url.searchParams.get('token') || '';
+  // Header only: a token in a query string ends up in request logs.
+  const given = String(req.headers.authorization ?? '').replace(/^Bearer\s+/i, '');
   const a = Buffer.from(given);
   const b = Buffer.from(config.adminToken);
   return a.length === b.length && crypto.timingSafeEqual(a, b);
@@ -231,9 +232,16 @@ export async function handleWeb(req: http.IncomingMessage, res: http.ServerRespo
     return true;
   }
 
-  const upload = /^\/web\/threads\/([a-f0-9]{32})\/uploads\/([a-f0-9]{32})$/.exec(p);
+  // The thread id is the visitor's only credential, so it travels in a header and never in a URL
+  // (URLs land in request logs, browser history and Referer headers).
+  const isThreadRoute = p === '/web/thread' || p === '/web/clips' || p === '/web/messages' || p.startsWith('/web/uploads/');
+  if (!isThreadRoute) return false;
+  const thread = String(req.headers['x-sticky-thread'] ?? '');
+  if (!ID.test(thread)) { send(res, 400, { ok: false, error: 'missing or malformed X-Sticky-Thread header' }); return true; }
+
+  const upload = /^\/web\/uploads\/([a-f0-9]{32})$/.exec(p);
   if (upload && req.method === 'POST') {
-    const [, thread, uploadId] = upload;
+    const uploadId = upload[1];
     const offset = Number(url.searchParams.get('offset'));
     const total = Number(url.searchParams.get('total'));
     if (!Number.isSafeInteger(offset) || !Number.isSafeInteger(total) || total <= 0 || total > LIMITS.maxDownloadBytes) {
@@ -251,9 +259,7 @@ export async function handleWeb(req: http.IncomingMessage, res: http.ServerRespo
     return true;
   }
 
-  const clips = /^\/web\/threads\/([a-f0-9]{32})\/clips$/.exec(p);
-  if (clips && req.method === 'POST') {
-    const thread = clips[1];
+  if (p === '/web/clips' && req.method === 'POST') {
     const body = JSON.parse((await readRaw(req, 64 * 1024)).toString('utf8') || '{}');
     const list: any[] = Array.isArray(body.clips) ? body.clips.slice(0, LIMITS.maxClips) : [];
     if (!list.length) { send(res, 400, { ok: false, error: 'no clips' }); return true; }
@@ -276,21 +282,20 @@ export async function handleWeb(req: http.IncomingMessage, res: http.ServerRespo
     return true;
   }
 
-  const msg = /^\/web\/threads\/([a-f0-9]{32})\/messages$/.exec(p);
-  if (msg && req.method === 'POST') {
+  if (p === '/web/messages' && req.method === 'POST') {
     const body = JSON.parse((await readRaw(req, 16 * 1024)).toString('utf8') || '{}');
     const text = typeof body.text === 'string' ? body.text.trim().slice(0, 500) : '';
     if (!text) { send(res, 400, { ok: false, error: 'empty' }); return true; }
-    await ingestWeb(linqShaped(`${WEB_PREFIX}${msg[1]}`, [{ type: 'text', value: text }]));
+    await ingestWeb(linqShaped(`${WEB_PREFIX}${thread}`, [{ type: 'text', value: text }]));
     send(res, 202, { ok: true });
     return true;
   }
 
-  const state = /^\/web\/threads\/([a-f0-9]{32})$/.exec(p);
-  if (state && req.method === 'GET') {
-    send(res, 200, await threadState(state[1]));
+  if (p === '/web/thread' && req.method === 'GET') {
+    send(res, 200, await threadState(thread));
     return true;
   }
 
-  return false;
+  send(res, 405, { ok: false });
+  return true;
 }

@@ -50,10 +50,11 @@ function json(res: http.ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body, null, 2));
 }
 
-function isAdmin(req: http.IncomingMessage, url: URL): boolean {
+function isAdmin(req: http.IncomingMessage, _url: URL): boolean {
   if (!config.adminToken) return false;
+  // Header only: a token in a query string ends up in request logs.
   const header = String(req.headers.authorization ?? '').replace(/^Bearer\s+/i, '');
-  return safeEqual(header || url.searchParams.get('token') || '', config.adminToken);
+  return header !== '' && safeEqual(header, config.adminToken);
 }
 
 async function ingest(raw: string, eventId: string): Promise<void> {

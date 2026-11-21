@@ -15,8 +15,9 @@ args.forEach((a, i) => { if (a === '--say') says.push(args[i + 1]); });
 if (!clip) { console.error('usage: web-e2e.ts <clip> [--base url] [--say text]…'); process.exit(1); }
 
 const thread = crypto.randomBytes(16).toString('hex');
-const api = (p: string) => `${base}/web/threads/${thread}${p}`;
-const state = async () => (await fetch(api(''))).json() as Promise<any>;
+// The thread id rides in a header, never in the URL (same as the page).
+const call = (p: string, init: RequestInit = {}) => fetch(`${base}${p}`, { ...init, headers: { ...(init.headers as Record<string, string> ?? {}), 'X-Sticky-Thread': thread } });
+const state = async () => (await call('/web/thread')).json() as Promise<any>;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function waitFor<T>(label: string, pick: (s: any) => T | null | undefined, timeoutMs = 150_000): Promise<T> {
@@ -35,11 +36,11 @@ const uploadId = crypto.randomBytes(16).toString('hex');
 const t0 = Date.now();
 for (let off = 0; off < bytes.length; off += 8 * 1024 * 1024) {
   const chunk = bytes.subarray(off, Math.min(bytes.length, off + 8 * 1024 * 1024));
-  const r = await fetch(api(`/uploads/${uploadId}?offset=${off}&total=${bytes.length}`), { method: 'POST', body: chunk });
+  const r = await call(`/web/uploads/${uploadId}?offset=${off}&total=${bytes.length}`, { method: 'POST', body: chunk });
   if (!r.ok) throw new Error(`upload ${r.status} ${await r.text()}`);
 }
 const mime = clip.toLowerCase().endsWith('.mov') ? 'video/quicktime' : 'video/mp4';
-const posted = await fetch(api('/clips'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clips: [{ uploadId, name: path.basename(clip), mime, total: bytes.length }], caption: '' }) });
+const posted = await call('/web/clips', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clips: [{ uploadId, name: path.basename(clip), mime, total: bytes.length }], caption: '' }) });
 console.log(`thread ${thread}\nupload+post ${Date.now() - t0}ms → HTTP ${posted.status}`);
 
 const v1 = await waitFor('v1', (s) => s.projects?.[0]?.versions?.[0]);
@@ -50,7 +51,7 @@ for (const text of says) {
   const nVersions = before.projects[0]?.versions.length ?? 0;
   const nReplies = before.conversation.filter((m: any) => m.from === 'sticky').length;
   const t1 = Date.now();
-  await fetch(api('/messages'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+  await call('/web/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
   const out = await waitFor(`reply to "${text}"`, (s) => {
     const p = s.projects[0];
     if (p && p.versions.length > nVersions) return { kind: 'version', v: p.versions[p.versions.length - 1] };

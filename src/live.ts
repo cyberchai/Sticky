@@ -10,7 +10,8 @@
  * a reconnecting browser replays what it missed; job/version progress arrives through triggers
  * (migrations/005_live.sql), so the worker never needs to know a room exists.
  *
- *   GET  /live/:token                    the page (guest link; the host's link adds ?host=<key>)
+ *   GET  /live/:token                    the page (guest link; the host's link adds #host=<key>, a fragment,
+ *                                        so the key never reaches the server, its logs or a Referer)
  *   POST /live-api/open                  {thread, projectId} → host link for a browser thread's reel
  *   GET  /live-api/:token/state          reel, versions with lineage, jobs, notes, network, who's here
  *   GET  /live-api/:token/stream         SSE: presence, signaling, room events
@@ -112,7 +113,7 @@ export async function ensureLive(projectId: string): Promise<{ live_token: strin
 export async function liveLinkLine(projectId: string): Promise<string> {
   if (!config.publicBaseUrl) return '';
   const r = await ensureLive(projectId);
-  return r ? `\nEdit it live with anyone you invite: ${config.publicBaseUrl}/live/${r.live_token}?host=${r.host_key}` : '';
+  return r ? `\nEdit it live with anyone you invite: ${config.publicBaseUrl}/live/${r.live_token}#host=${r.host_key}` : '';
 }
 
 const guestLink = (token: string) => (config.publicBaseUrl ? `${config.publicBaseUrl}/live/${token}` : '');
@@ -528,7 +529,7 @@ async function personById(id: unknown): Promise<Person | null> {
 
 async function stream(req: http.IncomingMessage, res: http.ServerResponse, url: URL, project: any, role: 'host' | 'guest'): Promise<void> {
   const peer = String(url.searchParams.get('peer') ?? '');
-  const person = await personById(url.searchParams.get('person'));
+  const person = await personById(req.headers['x-sticky-person']);
   if (!ID.test(peer) || !person) return send(res, 400, { ok: false, error: 'join first' });
   res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
   res.write('retry: 2000\n\n');
@@ -595,7 +596,7 @@ export async function handleLive(req: http.IncomingMessage, res: http.ServerResp
     const owned = await one(`SELECT id FROM sticky.projects WHERE id = $1 AND chat_id = $2`, [body.projectId, `web:${thread}`]);
     if (!owned) { send(res, 404, { ok: false }); return true; }
     const r = await ensureLive(owned.id);
-    send(res, 200, { ok: true, url: `/live/${r!.live_token}?host=${r!.host_key}` });
+    send(res, 200, { ok: true, url: `/live/${r!.live_token}#host=${r!.host_key}` });
     return true;
   }
 
@@ -604,7 +605,8 @@ export async function handleLive(req: http.IncomingMessage, res: http.ServerResp
   const [, token, action] = m;
   const project = await projectByToken(token);
   if (!project) { send(res, 404, { ok: false, error: 'This live link is not valid.' }); return true; }
-  const key = String(req.headers['x-sticky-host'] ?? url.searchParams.get('host') ?? '');
+  // Secrets travel in headers only (never the query string, which lands in request logs and history).
+  const key = String(req.headers['x-sticky-host'] ?? '');
   const host = Boolean(key && project.host_key && safeEqual(key, project.host_key));
   const role = host ? 'host' : 'guest';
 

@@ -314,8 +314,10 @@
 
     // ---------- identity ----------
     const token = location.pathname.split('/').pop();
-    const params = new URLSearchParams(location.search);
-    if (params.get('host')) { store.set(`sticky.host.${token}`, params.get('host')); history.replaceState(null, '', location.pathname); }
+    // The host key arrives as #host=<key> (a fragment never reaches the server); older links used ?host=.
+    // Either way it moves into storage and out of the address bar and history.
+    const linkKey = /^#host=([a-f0-9]{32})$/.exec(location.hash)?.[1] || new URLSearchParams(location.search).get('host');
+    if (linkKey) { store.set(`sticky.host.${token}`, linkKey); history.replaceState(null, '', location.pathname); }
     const hostKey = store.get(`sticky.host.${token}`) || '';
     let personId = store.get('sticky.person');
     if (!/^[a-f0-9]{32}$/.test(personId || '')) { personId = hex(16); store.set('sticky.person', personId); }
@@ -432,12 +434,42 @@
     }
 
     // ---------- realtime ----------
-    let es = null;
-    function connect() {
-      es = new EventSource(api(`/stream?peer=${peerId}&person=${personId}${hostKey ? `&host=${hostKey}` : ''}`));
-      es.onmessage = (e) => { try { onEvent(JSON.parse(e.data)); } catch (err) { console.warn('[live] bad event', err); } };
-      es.onopen = () => { $('conn').textContent = ''; };
-      es.onerror = () => { $('conn').textContent = 'Reconnecting…'; };
+    // Server-sent events read with fetch, not EventSource, so the host key and person id ride in headers
+    // instead of the URL. Reconnects resume from the last event id (the server replays what was missed).
+    let lastEventId = 0;
+    async function connect() {
+      for (;;) {
+        try {
+          const res = await fetch(api(`/stream?peer=${peerId}`), {
+            cache: 'no-store',
+            headers: { ...headers(), 'X-Sticky-Person': personId, ...(lastEventId ? { 'Last-Event-ID': String(lastEventId) } : {}) },
+          });
+          if (!res.ok || !res.body) throw new Error(`stream HTTP ${res.status}`);
+          $('conn').textContent = '';
+          const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+          let buf = '';
+          for (;;) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buf += value;
+            let end;
+            while ((end = buf.indexOf('\n\n')) >= 0) {
+              const block = buf.slice(0, end);
+              buf = buf.slice(end + 2);
+              let data = '';
+              for (const line of block.split('\n')) {
+                if (line.startsWith('id: ')) lastEventId = Number(line.slice(4)) || lastEventId;
+                else if (line.startsWith('data: ')) data += line.slice(6);
+              }
+              if (data) { try { onEvent(JSON.parse(data)); } catch (err) { console.warn('[live] bad event', err); } }
+            }
+          }
+        } catch (err) {
+          console.warn('[live] stream', err);
+        }
+        $('conn').textContent = 'Reconnecting…';
+        await new Promise((r) => setTimeout(r, 2000));
+      }
     }
     addEventListener('pagehide', () => { navigator.sendBeacon?.(api('/leave'), JSON.stringify({ peer: peerId })); });
     const signal = (to, data) => post('/signal', { from: peerId, to, data });
@@ -445,13 +477,20 @@
     function onEvent(m) {
       const p = m.payload || {};
       switch (m.type) {
-        case 'hello':
+        case 'hello': {
+          // Also sent on every reconnect: only call peers we don't already have, or live calls would reset.
+          const first = !me;
           me = p.you;
           $('meTile').style.setProperty('--c', me.color);
           $('roleTag').textContent = me.role === 'host' ? 'You’re the host' : '';
-          for (const o of p.others) { addPeer(o); if (peerId < o.peer) call(o.peer); }
-          feed({ kind: 'sys', text: p.others.length ? `You joined ${p.others.map((o) => o.name).join(', ')}.` : 'You’re the first one here. Invite people with the Invite button.' });
+          for (const o of p.others) {
+            const known = peers.has(o.peer);
+            addPeer(o);
+            if (!known && peerId < o.peer) call(o.peer);
+          }
+          if (first) feed({ kind: 'sys', text: p.others.length ? `You joined ${p.others.map((o) => o.name).join(', ')}.` : 'You’re the first one here. Invite people with the Invite button.' });
           break;
+        }
         case 'join':
           addPeer(p);
           if (peerId < p.peer) call(p.peer);

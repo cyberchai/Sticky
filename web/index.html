@@ -359,7 +359,8 @@
     if (fromHash) { thread = fromHash; try { localStorage.setItem('sticky.thread', thread); } catch {} history.replaceState(null, '', location.pathname); }
     if (!thread) try { thread = localStorage.getItem('sticky.thread'); } catch {}
     if (!/^[a-f0-9]{32}$/.test(thread || '')) { thread = hex(16); try { localStorage.setItem('sticky.thread', thread); } catch {} }
-    const api = (p) => `/web/threads/${thread}${p}`;
+    // The thread id is this browser's credential: it rides in a header, never in a URL (logs, history, Referer).
+    const call = (path, init = {}) => fetch(path, { ...init, headers: { ...(init.headers || {}), 'X-Sticky-Thread': thread } });
 
     let state = null;
     let selectedProject = null;
@@ -411,7 +412,7 @@
         let res;
         for (let attempt = 0; attempt < 4; attempt++) {
           try {
-            res = await fetch(api(`/uploads/${uploadId}?offset=${offset}&total=${file.size}`), { method: 'POST', body: file.slice(offset, end) });
+            res = await call(`/web/uploads/${uploadId}?offset=${offset}&total=${file.size}`, { method: 'POST', body: file.slice(offset, end) });
             if (res.ok || res.status === 409) break;
           } catch {}
           await new Promise((r) => setTimeout(r, 600 * (attempt + 1)));
@@ -441,7 +442,7 @@
       try {
         const clips = await Promise.all(chosen.map((f, i) => uploadFile(f, box.querySelector(`[data-i="${i}"]`))));
         const caption = $('direction').value.trim();
-        const res = await fetch(api('/clips'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clips, caption }) });
+        const res = await call('/web/clips', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clips, caption }) });
         if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'could not start the cut');
         $('direction').value = '';
         toast('Stuck. Watching your footage…');
@@ -461,7 +462,7 @@
     async function say(text) {
       const t = text.trim();
       if (!t) return;
-      const res = await fetch(api('/messages'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: t }) });
+      const res = await call('/web/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: t }) });
       if (!res.ok) return toast('Could not send that. Try again.');
       if (t.toUpperCase() === 'NEW REEL') { selectedProject = null; selectedVersion = null; }
       poll(true);
@@ -616,7 +617,7 @@
       clearTimeout(pollTimer);
       if (soon) { pollTimer = setTimeout(poll, 700); return; }
       try {
-        const res = await fetch(api(''), { cache: 'no-store' });
+        const res = await call('/web/thread', { cache: 'no-store' });
         if (res.ok) {
           const prevReady = state && state.projects.flatMap((p) => p.versions).length;
           state = await res.json();
