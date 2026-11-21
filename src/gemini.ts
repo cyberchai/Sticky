@@ -12,6 +12,7 @@ import type { Outlier } from './trends/outliers.js';
 import type { Candidate } from './trends/types.js';
 import { OVERLAY_ANIMATIONS, OVERLAY_SIZES, OVERLAY_STYLES, normalizeOverlays, type Overlay } from './overlays.js';
 import { TRANSITION_TYPES, normalizeTransitions, type Transition } from './transitions.js';
+import { CAPTION_POSITIONS, normalizeCaptions, type Captions } from './captions.js';
 
 let client: GoogleGenAI | null = null;
 function ai(): GoogleGenAI {
@@ -129,7 +130,7 @@ function candidateBrief(c: Candidate) {
 }
 
 const RULES = `Hard rules:
-- The output is a 9:16 Reel made ONLY of hard cuts between time ranges of the given clips. No text, captions, graphics, music, speed changes, zooms, filters or transitions exist.
+- The cut is a 9:16 Reel built ONLY from time ranges of the given clips. Text, stickers, captions, transitions and music are separate layers that exist only through their own fields where this request offers them; never fake them with cuts. Speed changes, zooms and filters don't exist.
 - All times are integer milliseconds relative to the start of each clip as given (0 = first frame of that clip).
 - Segments play in array order. A segment may come from any clip; order does not have to follow the source.
 - Each segment is at least ${LIMITS.minSegmentMs} ms. Total length ${LIMITS.minTotalMs}-${LIMITS.maxTotalMs} ms (shorter only if all the footage is shorter).
@@ -343,6 +344,19 @@ const reviseSchema = {
         propertyOrdering: ['segmentId', 'type', 'ms'],
       },
     },
+    // Auto-captions of what's said: null = unchanged; enabled false = off; enabled true = on with this look.
+    captions: {
+      type: 'object',
+      nullable: true,
+      properties: {
+        enabled: { type: 'boolean' },
+        style: { type: 'string', enum: [...OVERLAY_STYLES] },
+        position: { type: 'string', enum: [...CAPTION_POSITIONS] },
+        size: { type: 'string', enum: [...OVERLAY_SIZES] },
+      },
+      required: ['enabled', 'style', 'position', 'size'],
+      propertyOrdering: ['enabled', 'style', 'position', 'size'],
+    },
     // A change to how something INSIDE the user's footage looks ("make her dress purple").
     visualEdit: {
       type: 'object',
@@ -390,7 +404,8 @@ On-screen text and stickers are supported (overlays); the brief lists the curren
 - size small|medium|large (titles large, labels medium, stickers medium). style (text only, null for stickers): "clean" white with a shadow (default), "box" dark on a white box, "dark" white on a dark box, "yellow" dark on yellow.
 - animation (how it enters): "fade" (text default), "pop" (sticker default), "slide_up", "slide_left", or "none".
 Transitions between shots are supported; the brief lists the current ones (each is the transition INTO that shot from the one before). If the user asks for transitions or smoother cuts, set transitions to the COMPLETE new list; "hard cuts"/"remove the transitions" = an empty list; otherwise null. Types: crossfade, dissolve, dip_to_black, dip_to_white, slide_left, slide_right, slide_up, slide_down, wipe, zoom, circle, whip. "Add transitions" with nothing specific = crossfade into every shot after the first. ms 250-600 (default 350; shorter for punchy, longer for soft). The first shot can't have one.
-If the request needs something that does not exist here (auto-captions or subtitles of the speech, speed changes, color filters) or involves generating real or specific people, return no ops and set unsupportedReason to one short plain sentence saying what can't be done and why.
+Auto-captions of what's said are supported: they're generated from the speech and timed to it automatically. If the user asks for captions or subtitles, set captions {enabled: true, style, position, size} (defaults: style "clean", position "bottom", size "medium"; "Instagram style" = "box"); to turn them off, enabled false; to restyle them, enabled true with the new look; otherwise captions = null. Never type spoken words into overlays — captions do that.
+If the request needs something that does not exist here (speed changes, color filters) or involves generating real or specific people, return no ops and set unsupportedReason to one short plain sentence saying what can't be done and why.
 explanation = ONE plain sentence describing the change.
 ${RULES}`;
 
@@ -407,6 +422,7 @@ export interface ReviseResult {
   // Overlays and transitions: null/undefined = unchanged.
   overlays?: Overlay[] | null;
   transitions?: Transition[] | null;
+  captions?: Captions | false | null; // false = turn off
   explanation: string;
   ops: Op[];
   model: string;
@@ -453,10 +469,11 @@ The user now says: "${input.direction}"`;
     const target = ops.length ? applyOps(input.segments, ops).segments : input.segments;
     const ov = Array.isArray(data?.overlays) ? normalizeOverlays(data.overlays, target) : null;
     const tr = Array.isArray(data?.transitions) ? normalizeTransitions(data.transitions, target) : null;
-    const look = { overlays: ov?.overlays ?? null, transitions: tr?.transitions ?? null };
+    const captions = normalizeCaptions(data?.captions);
+    const look = { overlays: ov?.overlays ?? null, transitions: tr?.transitions ?? null, captions };
     const lookErrors = [...(ov?.errors ?? []), ...(tr?.errors ?? [])];
-    // Music, text, stickers or transitions alone: the shots stay exactly as they are.
-    if ((music || ov || tr) && !ops.length && !hasVisual && !hasGenerate && !lookErrors.length) {
+    // Music, text, stickers, transitions or captions alone: the shots stay exactly as they are.
+    if ((music || ov || tr || captions !== null) && !ops.length && !hasVisual && !hasGenerate && !lookErrors.length) {
       return { segments: input.segments, unsupportedReason: null, generate: null, music, ...look, explanation: String(data.explanation ?? '').trim(), ops, model, attempts, ms: totalModelMs };
     }
     if (!ops.length && hasVisual) {

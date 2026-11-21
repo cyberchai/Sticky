@@ -9,156 +9,114 @@
   <link rel="icon" href="/assets/sticky.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@1,800;1,900&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@1,900&display=swap" rel="stylesheet" />
   <style>
     :root {
-      --yellow: #FDFB04;
-      --ink: #361118;
-      --ink-2: rgba(54, 17, 24, 0.72);
-      --ink-3: rgba(54, 17, 24, 0.5);
-      --line: rgba(54, 17, 24, 0.12);
-      --line-strong: rgba(54, 17, 24, 0.85);
-      --card: #FFFFFF;
-      --cream: #FFFEF0;
-      --ok: #1F7A4D;
-      --warn: #A23B1B;
-      --r-xl: 30px;
-      --r-lg: 22px;
-      --r-md: 14px;
-      --r-sm: 10px;
-      --shadow: 0 1px 0 rgba(54, 17, 24, 0.05), 0 28px 60px -32px rgba(54, 17, 24, 0.45);
-      --shadow-sm: 0 1px 0 rgba(54, 17, 24, 0.05), 0 10px 24px -16px rgba(54, 17, 24, 0.35);
-      --taffy: cubic-bezier(0.34, 1.56, 0.64, 1);
-      --ease: cubic-bezier(0.22, 1, 0.36, 1);
+      --yellow: #FDFB04; --ink: #361118; --ink-2: rgba(54, 17, 24, .65); --ink-3: rgba(54, 17, 24, .45);
+      --line: rgba(54, 17, 24, .12); --cream: #FFFEF0; --ok: #1F7A4D; --warn: #A23B1B;
+      --shadow: 0 1px 0 rgba(54, 17, 24, .05), 0 28px 60px -32px rgba(54, 17, 24, .45);
+      --taffy: cubic-bezier(.34, 1.56, .64, 1); --ease: cubic-bezier(.22, 1, .36, 1);
       --display: "Playfair Display", "Times New Roman", serif;
       --ui: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --top: 72px;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html { -webkit-text-size-adjust: 100%; }
-    body {
-      font-family: var(--ui);
-      background: var(--yellow);
-      color: var(--ink);
-      line-height: 1.5;
-      -webkit-font-smoothing: antialiased;
-      min-height: 100vh;
-      overflow-x: hidden;
-    }
+    body { font-family: var(--ui); background: var(--yellow); color: var(--ink); line-height: 1.45; -webkit-font-smoothing: antialiased; min-height: 100vh; min-height: 100dvh; overflow-x: hidden; }
     a { color: inherit; }
     button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; }
     :focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; border-radius: 8px; }
+    .hidden, body.boot main, body.empty .studio, body:not(.empty) .landing, body.empty .reels-only { display: none !important; }
 
-    .wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px; }
-
-    /* ---------- top bar ---------- */
-    .topbar { display: flex; align-items: center; justify-content: space-between; padding: 22px 0 0; gap: 12px; }
-    .topbar .mark { height: 30px; width: auto; display: block; }
-    .pill {
-      display: inline-flex; align-items: center; gap: 8px;
-      padding: 9px 14px; border-radius: 999px;
-      background: var(--ink); color: var(--yellow);
-      font-size: 13px; font-weight: 600; text-decoration: none; white-space: nowrap;
-      transition: transform .35s var(--taffy);
-    }
-    .pill:hover { transform: translateY(-2px) scale(1.02); }
-    .pill svg { width: 15px; height: 15px; }
-
-    /* ---------- hero ---------- */
-    .hero { text-align: center; padding: 18px 0 10px; }
-    /* Transparent animated wordmark (keyed from sticky.mp4): no background box on any browser. */
-    .hero-logo {
-      width: min(520px, 86vw); height: auto; aspect-ratio: 760 / 407; margin: 34px auto 22px; display: block;
-      cursor: pointer; user-select: none; -webkit-user-drag: none;
-    }
-    .hero h1 {
-      font-family: var(--display); font-style: italic; font-weight: 900;
-      font-size: clamp(26px, 4.2vw, 40px); letter-spacing: -0.01em; line-height: 1.08;
-    }
-    .hero p { margin: 12px auto 0; max-width: 560px; color: var(--ink-2); font-size: 16px; }
-    .hero .sms { margin-top: 10px; font-size: 14px; color: var(--ink-2); }
-    .hero .sms a { font-weight: 700; color: var(--ink); text-decoration-thickness: 2px; text-underline-offset: 3px; }
-
-    /* ---------- drop card ---------- */
-    .drop {
-      position: relative; margin: 26px auto 0; max-width: 760px;
-      background: var(--card); border: 2px solid var(--line-strong); border-radius: var(--r-xl);
-      box-shadow: var(--shadow); padding: 34px 28px 26px; text-align: center;
-      transition: transform .5s var(--taffy), box-shadow .4s var(--ease), border-color .3s;
-      overflow: hidden;
-    }
-    .drop.over { transform: translateY(-4px) scale(1.012); box-shadow: 0 36px 70px -30px rgba(54,17,24,.55); }
-    .drop .well {
-      border: 2px dashed var(--line); border-radius: var(--r-lg); padding: 30px 18px 26px;
-      background: var(--cream); cursor: pointer; transition: border-color .3s, background .3s;
-    }
-    .drop.over .well, .drop .well:hover { border-color: var(--ink); background: #FFFDE0; }
-    .drop .icon {
-      width: 58px; height: 58px; margin: 0 auto 14px; border-radius: 50%;
-      background: var(--yellow); border: 2px solid var(--ink); display: grid; place-items: center;
-      transition: transform .6s var(--taffy);
-    }
-    .drop.over .icon { transform: translateY(-6px) scale(1.08) rotate(-6deg); }
-    .drop h2 { font-family: var(--display); font-style: italic; font-weight: 900; font-size: 30px; line-height: 1.1; }
-    .drop .sub { margin-top: 6px; color: var(--ink-2); font-size: 14px; }
-    .drop .row { display: flex; gap: 10px; margin-top: 18px; align-items: stretch; }
-    .field {
-      flex: 1; min-width: 0; border: 1.5px solid var(--line); border-radius: var(--r-md);
-      padding: 12px 14px; font: inherit; font-size: 14px; color: var(--ink); background: #fff;
-      transition: border-color .2s, box-shadow .2s;
-    }
-    .field::placeholder { color: var(--ink-3); }
-    .field:focus { outline: none; border-color: var(--ink); box-shadow: 0 0 0 4px rgba(253, 251, 4, .55); }
     .btn {
-      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-      padding: 12px 18px; border-radius: var(--r-md); font-weight: 700; font-size: 14px;
-      border: 1.5px solid var(--ink); background: #fff; white-space: nowrap;
-      transition: transform .35s var(--taffy), background .2s, box-shadow .2s;
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 16px; border-radius: 999px;
+      font-weight: 700; font-size: 14px; border: 2px solid var(--ink); background: #fff; color: var(--ink);
+      text-decoration: none; white-space: nowrap; transition: transform .35s var(--taffy);
     }
-    .btn:hover { transform: translateY(-1px); box-shadow: var(--shadow-sm); }
-    .btn:active { transform: translateY(1px) scale(.98); }
-    .btn.primary { background: var(--ink); color: var(--yellow); }
+    .btn:hover { transform: translateY(-2px); }
+    .btn:active { transform: translateY(1px) scale(.97); }
+    .btn.ink { background: var(--ink); color: var(--yellow); }
     .btn.yellow { background: var(--yellow); }
     .btn[disabled] { opacity: .45; pointer-events: none; }
-    .hidden { display: none !important; }
-    .splat {
-      position: absolute; width: 22px; height: 22px; border-radius: 50%; background: var(--yellow);
-      border: 2px solid var(--ink); pointer-events: none; transform: translate(-50%, -50%) scale(0);
-      animation: splat .7s var(--taffy) forwards;
-    }
-    @keyframes splat { 0% { transform: translate(-50%,-50%) scale(0); opacity: 1 } 60% { transform: translate(-50%,-50%) scale(5); opacity: .9 } 100% { transform: translate(-50%,-50%) scale(6.5); opacity: 0 } }
 
-    .uploads { margin-top: 16px; display: grid; gap: 8px; text-align: left; }
+    /* ---------- top bar ---------- */
+    .topbar { height: var(--top); display: flex; align-items: center; gap: 10px; padding: 0 20px; max-width: 1180px; margin: 0 auto; }
+    .topbar .mark { height: 28px; width: auto; display: block; }
+    .topbar .spacer { flex: 1; }
+
+    /* ---------- landing: the logo and one place to drop ---------- */
+    .landing { min-height: calc(100dvh - var(--top)); display: grid; place-content: center; justify-items: center; gap: clamp(12px, 4vh, 40px); padding: 0 20px calc(var(--top) * .6); }
+    .hero-logo { width: min(520px, 84vw, calc(36vh * 1.867)); height: auto; aspect-ratio: 760 / 407; display: block; cursor: pointer; user-select: none; -webkit-user-drag: none; }
+    /* The drop target is a slab of the wordmark's ink with honey hanging off its lower edge. Slab and drips
+       share one goo filter (#goo, end of body) so they read as a single poured shape; the label sits on top, unfiltered. */
+    .drop {
+      --hang: 76px;
+      position: relative; width: min(520px, 88vw); padding: clamp(24px, 4.2vh, 36px) clamp(22px, 4vw, 34px);
+      display: flex; align-items: center; justify-content: center; gap: 18px; text-align: left; color: var(--yellow);
+    }
+    .drop:focus-visible { border-radius: 28px; outline-offset: 5px; }
+    .drop > :not(.goo) { position: relative; }
+    .goo { position: absolute; inset: 0 0 calc(var(--hang) * -1); filter: url(#goo); pointer-events: none; }
+    .slab { position: absolute; inset: 0 0 var(--hang); border-radius: 28px; background: var(--ink); }
+    .honey {
+      position: absolute; top: calc(100% - var(--hang) - 14px); left: var(--x); width: var(--w); height: var(--h); margin-left: calc(var(--w) / -2);
+      border-radius: 0 0 999px 999px; background: var(--ink); transition: height 1.2s cubic-bezier(.3, 1.35, .45, 1) var(--d, 0s);
+    }
+    .honey::after { content: ""; position: absolute; left: 50%; bottom: -6px; width: calc(var(--w) + 7px); aspect-ratio: 1; border-radius: 50%; background: inherit; transform: translateX(-50%); }
+    /* Hover pulls the honey longer instead of moving the card; a file dragged over pulls it further. */
+    .drop:hover .honey, .drop:focus-visible .honey { height: calc(var(--h) + 14px); }
+    body.over .honey { height: calc(var(--h) + 26px); }
+    /* Every few seconds the longest drip lets a bead go. */
+    .bead { position: absolute; top: calc(100% - var(--hang) + 22px); left: 63%; width: 18px; height: 18px; margin-left: -9px; border-radius: 50%; background: var(--ink); animation: bead 6s cubic-bezier(.55, 0, .9, .5) infinite 1.5s; opacity: 0; }
+    @keyframes bead {
+      0% { transform: translateY(0) scale(.5); opacity: 1 }
+      72% { transform: translateY(6px) scale(1); opacity: 1 }
+      90% { transform: translateY(54px) scale(.8, 1.1); opacity: 1 }
+      96%, 100% { transform: translateY(64px) scale(.4); opacity: 0 }
+    }
+    .drop:hover .bead { animation-play-state: paused; }
+    .cue { flex: none; width: 52px; height: 52px; border-radius: 50%; background: var(--yellow); color: var(--ink); display: grid; place-items: center; }
+    .cue svg { transition: transform .6s cubic-bezier(.3, 1.6, .5, 1); }
+    .drop:hover .cue svg { transform: translateY(3px); }
+    .drop b { display: block; font-family: var(--display); font-style: italic; font-weight: 900; font-size: clamp(24px, 6.4vw, 32px); line-height: 1.05; }
+    .drop small { display: block; margin-top: 4px; font-size: 14px; color: rgba(253, 251, 4, .68); }
+    .ripple { position: absolute; inset: 0; border-radius: 28px; overflow: hidden; pointer-events: none; }
+    .splat { position: absolute; width: 24px; height: 24px; border-radius: 50%; background: var(--yellow); pointer-events: none; animation: splat .8s var(--ease) forwards; }
+    @keyframes splat { from { transform: translate(-50%, -50%) scale(0); opacity: .45 } to { transform: translate(-50%, -50%) scale(16); opacity: 0 } }
+    .defs { position: absolute; width: 0; height: 0; }
+
+    /* Dragging files anywhere over the page: the page goes to ink. */
+    .dropzone { position: fixed; inset: 0; background: rgba(54, 17, 24, .92); color: var(--yellow); display: none; place-items: center; z-index: 40; pointer-events: none; font-family: var(--display); font-style: italic; font-weight: 900; font-size: clamp(36px, 7vw, 64px); }
+    body.over .dropzone { display: grid; }
+
+    .uploads { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); width: min(420px, calc(100vw - 32px)); background: #fff; border: 2px solid var(--ink); border-radius: 20px; padding: 14px 16px; display: grid; gap: 8px; box-shadow: var(--shadow); z-index: 30; }
+    .uploads:empty { display: none; }
     .up { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; font-size: 13px; }
     .up .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .up .pct { color: var(--ink-2); font-variant-numeric: tabular-nums; }
     .bar { grid-column: 1 / -1; height: 6px; border-radius: 6px; background: var(--line); overflow: hidden; }
     .bar i { display: block; height: 100%; width: 0; background: var(--ink); border-radius: 6px; transition: width .25s var(--ease); }
 
-    /* ---------- studio ---------- */
-    .studio { margin: 34px auto 0; max-width: 1040px; display: grid; grid-template-columns: 340px 1fr; gap: 22px; align-items: start; }
-    .panel { background: var(--card); border: 2px solid var(--line-strong); border-radius: var(--r-xl); box-shadow: var(--shadow); }
-    .player { padding: 14px; position: sticky; top: 16px; }
-    .screen {
-      position: relative; aspect-ratio: 9 / 16; border-radius: 20px; overflow: hidden; background: #140609;
-      display: grid; place-items: center;
-    }
+    /* ---------- studio: the reel and a conversation, on one screen ---------- */
+    .studio { max-width: 1180px; margin: 0 auto; padding: 0 20px 20px; display: grid; grid-template-columns: auto minmax(0, 560px); justify-content: center; gap: 24px; height: calc(100dvh - var(--top)); }
+    .player { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+    .screen { height: min(calc(100dvh - var(--top) - 124px), 860px); aspect-ratio: 9 / 16; border-radius: 24px; overflow: hidden; background: #140609; display: grid; place-items: center; border: 2px solid var(--ink); }
     .screen video { width: 100%; height: 100%; object-fit: cover; display: block; background: #000; }
     .screen .wait { color: var(--yellow); text-align: center; padding: 24px; }
     .screen .wait b { display: block; font-family: var(--display); font-style: italic; font-weight: 900; font-size: 26px; line-height: 1.15; }
-    .screen .wait span { display: block; margin-top: 8px; font-size: 13px; color: rgba(253,251,4,.75); }
+    .screen .wait span { display: block; margin-top: 8px; font-size: 13px; color: rgba(253, 251, 4, .75); }
     .drip { width: 46px; height: 46px; margin: 0 auto 16px; border-radius: 50% 50% 50% 0; background: var(--yellow); transform: rotate(-45deg); animation: drip 1.6s var(--ease) infinite; }
     @keyframes drip { 0%,100% { transform: rotate(-45deg) translateY(0) scale(1) } 50% { transform: rotate(-45deg) translate(6px,-6px) scale(1.12) } }
-    .versions { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
-    .vtab { padding: 7px 12px; border-radius: 999px; border: 1.5px solid var(--line); font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; transition: background .2s, border-color .2s; }
+    .versions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .versions:empty { display: none; }
+    .vtab { padding: 6px 12px; border-radius: 999px; border: 1.5px solid var(--ink-3); font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
     .vtab[aria-selected="true"] { background: var(--ink); color: var(--yellow); border-color: var(--ink); }
-    .vtab .kept { margin-left: 4px; }
-    .player-actions { display: flex; gap: 8px; margin-top: 10px; }
-    .player-actions .btn { flex: 1; padding: 10px 12px; font-size: 13px; }
+    .player-actions { display: flex; gap: 8px; }
+    .player-actions .btn { flex: 1; padding: 10px 12px; }
 
-    .detail { padding: 22px 24px 24px; display: grid; gap: 22px; }
-    .detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-    .detail-head h3 { font-family: var(--display); font-style: italic; font-weight: 900; font-size: 28px; line-height: 1.1; }
-    .detail-head .meta { color: var(--ink-2); font-size: 13px; margin-top: 4px; }
+    .panel { background: #fff; border: 2px solid var(--ink); border-radius: 30px; box-shadow: var(--shadow); padding: 20px; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+    .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .head h3 { font-family: var(--display); font-style: italic; font-weight: 900; font-size: 26px; line-height: 1.1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .status { display: inline-flex; align-items: center; gap: 7px; padding: 6px 11px; border-radius: 999px; font-size: 12px; font-weight: 700; background: var(--cream); border: 1.5px solid var(--line); white-space: nowrap; }
     .status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-3); }
     .status.live .dot { background: var(--ink); animation: pulse 1.2s ease-in-out infinite; }
@@ -167,180 +125,131 @@
     .status.bad .dot { background: var(--warn); }
     @keyframes pulse { 50% { transform: scale(1.6); opacity: .4 } }
 
-    .label { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 8px; }
-    .why { border: 2px solid var(--ink); border-radius: var(--r-lg); padding: 16px 18px; background: var(--yellow); }
-    .why .technique { font-family: var(--display); font-style: italic; font-weight: 900; font-size: 22px; line-height: 1.15; }
-    .why .evidence { margin-top: 6px; font-size: 13px; font-weight: 600; }
-    .why .evidence a { text-underline-offset: 3px; }
-    .why p { margin-top: 10px; font-size: 14px; color: var(--ink); }
-    .why .muted { color: var(--ink-2); font-size: 13px; margin-top: 8px; }
-    .proof { margin-top: 12px; background: #fff; border: 1.5px solid var(--ink); border-radius: var(--r-md); padding: 10px 12px; }
-    .proof-k { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
-    .proof-v { margin-top: 4px; font-size: 14px; }
-    .proof-v a { font-weight: 700; text-underline-offset: 3px; }
-    .proof-s { margin-top: 4px; font-size: 12px; color: var(--ink-2); }
+    .why { border-radius: 20px; padding: 14px 16px; background: var(--yellow); flex: none; max-height: 34%; overflow-y: auto; }
+    .why:empty { display: none; }
+    .why .technique { font-family: var(--display); font-style: italic; font-weight: 900; font-size: 20px; line-height: 1.15; }
+    .why p { margin-top: 6px; font-size: 14px; }
+    .why .tags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; font-size: 12px; font-weight: 600; color: var(--ink-2); }
+    .why .tags a { text-underline-offset: 3px; }
+    .ai { display: inline-block; padding: 1px 8px; border-radius: 999px; background: var(--ink); color: var(--yellow); font-size: 11px; font-weight: 700; }
 
-    .stages { display: grid; gap: 0; }
-    .stage { display: grid; grid-template-columns: 22px 1fr auto; gap: 12px; align-items: start; padding: 10px 0; border-top: 1px solid var(--line); font-size: 14px; }
-    .stage:first-child { border-top: 0; }
-    .stage .tick { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--line); margin-top: 2px; display: grid; place-items: center; }
-    .stage.done .tick { background: var(--ink); border-color: var(--ink); }
-    .stage.done .tick::after { content: ""; width: 6px; height: 3px; border-left: 2px solid var(--yellow); border-bottom: 2px solid var(--yellow); transform: rotate(-45deg) translate(1px, -1px); }
-    .stage.live .tick { border-color: var(--ink); border-top-color: transparent; animation: spin .8s linear infinite; }
-    .stage.bad .tick { background: var(--warn); border-color: var(--warn); }
-    @keyframes spin { to { transform: rotate(360deg) } }
-    .stage .what b { font-weight: 700; }
-    .stage .what small { display: block; color: var(--ink-2); font-size: 13px; }
-    .stage .ms { color: var(--ink-3); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-
-    .clips { display: grid; gap: 6px; }
-    .clip { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; padding: 9px 12px; border-radius: var(--r-sm); background: var(--cream); border: 1px solid var(--line); }
-    .clip .n { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .clip .m { color: var(--ink-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
-    .ai { display: inline-block; padding: 1px 7px; border-radius: 999px; background: var(--ink); color: var(--yellow); font-size: 11px; font-weight: 700; letter-spacing: .02em; }
-
-    .chat { display: grid; gap: 8px; max-height: 280px; overflow-y: auto; padding-right: 4px; }
+    .chat { flex: 1; min-height: 80px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px; }
     .bubble { max-width: 82%; padding: 9px 13px; border-radius: 18px; font-size: 14px; line-height: 1.4; white-space: pre-wrap; word-wrap: break-word; }
-    .bubble.you { justify-self: end; background: var(--ink); color: var(--yellow); border-bottom-right-radius: 6px; }
-    .bubble.sticky { justify-self: start; background: var(--cream); border: 1px solid var(--line); border-bottom-left-radius: 6px; }
-    .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
-    .chip { padding: 7px 11px; border-radius: 999px; border: 1.5px solid var(--line); background: #fff; font-size: 13px; font-weight: 600; transition: border-color .2s, transform .3s var(--taffy); }
+    .bubble.you { align-self: flex-end; background: var(--ink); color: var(--yellow); border-bottom-right-radius: 6px; }
+    .bubble.sticky { align-self: flex-start; background: var(--cream); border: 1px solid var(--line); border-bottom-left-radius: 6px; }
+    .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+    .chips.suggest { align-items: center; }
+    .suggest-label { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); margin-right: 2px; }
+    .chip.vote { background: var(--yellow); border-color: var(--ink); }
+    .chip.vote[disabled] { background: #fff; opacity: .6; cursor: default; }
+    .chip { padding: 6px 11px; border-radius: 999px; border: 1.5px solid var(--line); font-size: 13px; font-weight: 600; transition: border-color .2s, transform .3s var(--taffy); }
     .chip:hover { border-color: var(--ink); transform: translateY(-1px); }
     .composer { display: flex; gap: 8px; }
+    .field { flex: 1; min-width: 0; border: 1.5px solid var(--line); border-radius: 999px; padding: 11px 16px; font: inherit; font-size: 14px; color: var(--ink); background: #fff; }
+    .field::placeholder { color: var(--ink-3); }
+    .field:focus { outline: none; border-color: var(--ink); }
 
-    .history { margin: 34px auto 0; max-width: 1040px; }
-    .history h4 { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); margin: 0 4px 10px; }
-    .hrow { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; padding: 14px 16px; border-radius: var(--r-md); background: rgba(255,255,255,.7); border: 1.5px solid transparent; margin-bottom: 8px; transition: border-color .2s, transform .35s var(--taffy), background .2s; }
-    .hrow:hover { border-color: var(--ink); transform: translateX(3px); background: #fff; }
-    .hrow[aria-current="true"] { border-color: var(--ink); background: #fff; }
-    .hrow .t { flex: 1; min-width: 0; }
-    .hrow .t b { display: block; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .hrow .t small { color: var(--ink-2); font-size: 12px; }
-
-    footer { text-align: center; color: var(--ink-2); font-size: 12px; padding: 48px 20px 40px; }
-    footer b { color: var(--ink); }
+    .earlier { font-size: 13px; }
+    .earlier summary { cursor: pointer; font-weight: 700; color: var(--ink-2); list-style: none; }
+    .earlier summary::-webkit-details-marker { display: none; }
+    .earlier summary::after { content: " ↓"; }
+    .earlier[open] summary::after { content: " ↑"; }
+    .earlier .list { display: grid; gap: 4px; margin-top: 8px; max-height: 160px; overflow-y: auto; }
+    .hrow { display: flex; align-items: center; gap: 10px; text-align: left; padding: 8px 10px; border-radius: 12px; background: var(--cream); }
+    .hrow:hover { background: var(--yellow); }
+    .hrow b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
     .toast {
-      position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px); opacity: 0;
+      position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px); opacity: 0; z-index: 50;
       background: var(--ink); color: var(--yellow); padding: 12px 18px; border-radius: 999px;
       font-size: 14px; font-weight: 600; box-shadow: var(--shadow); pointer-events: none;
       transition: opacity .3s var(--ease), transform .45s var(--taffy); max-width: calc(100vw - 32px); text-align: center;
     }
     .toast.show { opacity: 1; transform: translate(-50%, 0); }
 
+    /* Narrow screens stack the reel over the conversation and let the page scroll. */
     @media (max-width: 860px) {
-      .studio { grid-template-columns: 1fr; }
-      .player { position: static; max-width: 380px; margin: 0 auto; width: 100%; }
+      .studio { grid-template-columns: 1fr; height: auto; padding: 0 16px 24px; }
+      .player { align-items: center; }
+      .screen { height: auto; width: min(100%, 360px); }
+      .player-actions, .versions { width: min(100%, 360px); }
+      .panel { min-height: 70vh; }
     }
     @media (max-width: 520px) {
-      .drop { padding: 22px 16px 18px; border-radius: 24px; }
-      .drop .row { flex-direction: column; }
-      .detail { padding: 18px 16px; }
-      .topbar .pill span.long { display: none; }
+      .topbar { padding: 0 16px; }
+      .addlabel { display: none; }
     }
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+      .bead { display: none; }
     }
   </style>
 </head>
-<body>
-  <div class="wrap">
-    <div class="topbar">
-      <img class="mark" src="/assets/sticky-mark.svg" alt="sticky" width="66" height="30" />
-      <a class="pill" id="smsPill" href="#">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>
-        <span class="long">Text footage to</span> <span id="lineLabel">sticky</span>
-      </a>
+<body class="boot empty">
+  <header class="topbar">
+    <a class="reels-only" href="/" aria-label="sticky"><img class="mark" src="/assets/sticky-mark.svg" alt="sticky" width="62" height="28" /></a>
+    <span class="spacer"></span>
+    <button class="btn reels-only" id="addBtn" type="button" aria-label="Add clips">+<span class="addlabel"> Add clips</span></button>
+    <a class="btn ink" href="/join">Text it</a>
+  </header>
+
+  <main class="landing">
+    <img class="hero-logo" id="heroLogo" src="/assets/sticky-logo.gif" alt="sticky" width="760" height="407" />
+    <button class="drop" id="drop" type="button">
+      <span class="goo" aria-hidden="true">
+        <span class="slab"></span>
+        <span class="honey" style="--x: 17%; --w: 12px; --h: 26px; --d: .08s"></span>
+        <span class="honey" style="--x: 63%; --w: 17px; --h: 40px"></span>
+        <span class="honey" style="--x: 85%; --w: 10px; --h: 20px; --d: .16s"></span>
+        <span class="bead"></span>
+      </span>
+      <span class="ripple" id="ripple"></span>
+      <span class="cue" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v13"/><path d="m6 11 6 6 6-6"/></svg></span>
+      <span><b>Drop your clips</b><small>1–3 videos · up to 60 seconds</small></span>
+    </button>
+  </main>
+
+  <main class="studio" id="studio" aria-live="polite">
+    <div class="player">
+      <div class="screen" id="screen"></div>
+      <div class="versions" id="versions" role="tablist" aria-label="Versions"></div>
+      <div class="player-actions">
+        <button class="btn yellow" id="keepBtn" type="button">Keep</button>
+        <a class="btn" id="downloadBtn" download>Download</a>
+        <button class="btn ink" id="liveBtn" type="button">Edit live</button>
+      </div>
     </div>
 
-    <section class="hero">
-      <img class="hero-logo" id="heroLogo" src="/assets/sticky-logo.gif" alt="sticky" width="760" height="407" />
-      <h1>Drop raw footage. Get the reel.</h1>
-      <p>Sticky watches and listens, finds the strongest moment, and cuts it using an editing technique that's working on Instagram this week. No caption needed.</p>
-      <div class="sms" id="smsLine"></div>
-    </section>
-
-    <section class="drop" id="drop" aria-label="Upload footage">
-      <div class="well" id="well" role="button" tabindex="0" aria-describedby="dropSub">
-        <div class="icon" aria-hidden="true">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>
-        </div>
-        <h2>Drop your clips</h2>
-        <div class="sub" id="dropSub">1–3 phone videos · up to 60 seconds total · .mov or .mp4</div>
+    <section class="panel">
+      <div class="head">
+        <h3 id="projTitle">Your reel</h3>
+        <span class="status" id="projStatus"><span class="dot"></span><span id="projStatusText">Waiting</span></span>
       </div>
-      <div class="row">
-        <input class="field" id="direction" type="text" maxlength="300" placeholder="Optional direction, e.g. “Keep the reveal for the end”" aria-label="Optional direction" />
-        <button class="btn primary" id="chooseBtn" type="button">Choose videos</button>
+      <div class="why" id="why"></div>
+      <div class="chat" id="chat"></div>
+      <div class="chips suggest hidden" id="pollChips" aria-label="Sticky suggests"></div>
+      <div class="chips" id="chips">
+        <button class="chip" type="button" data-say="Make it eight seconds">8 seconds</button>
+        <button class="chip" type="button" data-say="Mute the first shot">Mute shot 1</button>
+        <button class="chip" type="button" data-say="NEW REEL">New reel</button>
       </div>
-      <input type="file" id="fileInput" class="hidden" accept="video/*" multiple />
-      <div class="uploads" id="uploads" aria-live="polite"></div>
+      <form class="composer" id="composer" autocomplete="off">
+        <input class="field" id="say" maxlength="500" placeholder="Text a change" aria-label="Message the editor" />
+        <button class="btn ink" type="submit">Send</button>
+      </form>
+      <details class="earlier hidden" id="history">
+        <summary id="historySum">Earlier reels</summary>
+        <div class="list" id="historyList"></div>
+      </details>
     </section>
+  </main>
 
-    <section class="studio hidden" id="studio" aria-live="polite">
-      <div class="panel player">
-        <div class="screen" id="screen"></div>
-        <div class="versions" id="versions" role="tablist" aria-label="Versions"></div>
-        <div class="player-actions">
-          <button class="btn yellow" id="keepBtn" type="button">Keep this one</button>
-          <a class="btn" id="downloadBtn" download>Download</a>
-        </div>
-        <button class="btn primary" id="liveBtn" type="button" style="width:100%;margin-top:8px">Edit live with your team</button>
-      </div>
-
-      <div class="panel detail">
-        <div class="detail-head">
-          <div>
-            <h3 id="projTitle">Your reel</h3>
-            <div class="meta" id="projMeta"></div>
-          </div>
-          <span class="status" id="projStatus"><span class="dot"></span><span id="projStatusText">Waiting</span></span>
-        </div>
-
-        <div id="whyWrap">
-          <div class="label">Why this cut</div>
-          <div class="why" id="why"></div>
-        </div>
-
-        <div>
-          <div class="label">Edit chain</div>
-          <div class="stages" id="stages"></div>
-        </div>
-
-        <div>
-          <div class="label">Raw footage</div>
-          <div class="clips" id="clips"></div>
-        </div>
-
-        <div>
-          <div class="label">Talk to the editor</div>
-          <div class="chat" id="chat"></div>
-          <div class="chips" id="chips" style="margin-top:12px">
-            <button class="chip" type="button" data-say="Why this cut?">Why this cut?</button>
-            <button class="chip" type="button" data-say="Show the object first">Show the object first</button>
-            <button class="chip" type="button" data-say="Make it eight seconds">Make it 8 seconds</button>
-            <button class="chip" type="button" data-say="Mute the first shot">Mute the first shot</button>
-            <button class="chip" type="button" data-say="Lead with my last line">Lead with my last line</button>
-            <button class="chip" type="button" data-say="NEW REEL">New reel</button>
-          </div>
-          <form class="composer" id="composer" autocomplete="off">
-            <input class="field" id="say" maxlength="500" placeholder="Text a change, like you would in iMessage" aria-label="Message the editor" />
-            <button class="btn primary" type="submit">Send</button>
-          </form>
-        </div>
-      </div>
-    </section>
-
-    <section class="history hidden" id="history">
-      <h4>Earlier reels</h4>
-      <div id="historyList"></div>
-    </section>
-
-    <footer>
-      Trends are editorial observations from public, dated Instagram roundups (Later, New Engen), never a viral score.
-      <br />Your clips stay yours; originals are kept untouched. <b>sticky</b>
-    </footer>
-  </div>
-
+  <input type="file" id="fileInput" class="hidden" accept="video/*" multiple />
+  <div class="uploads" id="uploads" aria-live="polite"></div>
+  <div class="dropzone" aria-hidden="true">Drop to stick</div>
+  <svg class="defs" aria-hidden="true" focusable="false">
+    <filter id="goo" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="5" /><feColorMatrix values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -10" /></filter>
+  </svg>
   <div class="toast" id="toast" role="status"></div>
 
   <script>
@@ -348,9 +257,6 @@
     const $ = (id) => document.getElementById(id);
     const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const hex = (n) => Array.from(crypto.getRandomValues(new Uint8Array(n)), (b) => b.toString(16).padStart(2, '0')).join('');
-    const fmt = (ms) => { const s = Math.round((ms || 0) / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
-    const secs = (ms) => (ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms)}ms`);
-    const ago = (iso) => { const s = (Date.now() - new Date(iso).getTime()) / 1000; if (s < 60) return 'just now'; if (s < 3600) return `${Math.floor(s / 60)}m ago`; if (s < 86400) return `${Math.floor(s / 3600)}h ago`; return new Date(iso).toLocaleDateString(); };
     const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     let thread = null;
@@ -369,7 +275,6 @@
     let uploading = false;
     let pollTimer = null;
 
-    // ---------- toast ----------
     const toast = (msg) => { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 3200); };
 
     // ---------- animated logo ----------
@@ -381,27 +286,34 @@
     if (reduced) logo.src = '/assets/sticky-mark.svg';
     else { logo.addEventListener('click', drip); logo.addEventListener('mouseenter', drip); }
 
-    // ---------- drop zone ----------
+    // ---------- picking and dropping files ----------
     const drop = $('drop');
-    const well = $('well');
     const fileInput = $('fileInput');
     const splat = (x, y) => {
       if (reduced) return;
       const r = drop.getBoundingClientRect();
       const s = document.createElement('span');
       s.className = 'splat';
-      s.style.left = `${(x ?? r.left + r.width / 2) - r.left}px`;
-      s.style.top = `${(y ?? r.top + r.height / 2) - r.top}px`;
-      drop.appendChild(s);
+      s.style.left = `${(x || r.left + r.width / 2) - r.left}px`;
+      s.style.top = `${(y || r.top + r.height / 2) - r.top}px`;
+      $('ripple').appendChild(s);
       setTimeout(() => s.remove(), 800);
     };
-    well.addEventListener('click', (e) => { splat(e.clientX, e.clientY); fileInput.click(); });
-    well.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); } });
-    $('chooseBtn').addEventListener('click', () => fileInput.click());
+    drop.addEventListener('click', (e) => { splat(e.clientX, e.clientY); fileInput.click(); });
+    $('addBtn').addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', () => { handleFiles(fileInput.files); fileInput.value = ''; });
-    ['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); }));
-    ['dragleave', 'dragend'].forEach((ev) => drop.addEventListener(ev, () => drop.classList.remove('over')));
-    drop.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('over'); splat(e.clientX, e.clientY); handleFiles(e.dataTransfer.files); });
+    // Files can land anywhere on the page; the counter keeps the overlay steady over child elements.
+    let dragDepth = 0;
+    const hasFiles = (e) => Array.from(e.dataTransfer?.types || []).includes('Files');
+    window.addEventListener('dragenter', (e) => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth++; document.body.classList.add('over'); });
+    window.addEventListener('dragover', (e) => { if (hasFiles(e)) e.preventDefault(); });
+    window.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove('over'); } });
+    window.addEventListener('drop', (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault(); dragDepth = 0; document.body.classList.remove('over');
+      if (document.body.classList.contains('empty')) splat(e.clientX, e.clientY);
+      handleFiles(e.dataTransfer.files);
+    });
 
     const CHUNK = 8 * 1024 * 1024;
     async function uploadFile(file, row) {
@@ -422,8 +334,9 @@
         if (res.status === 409 && Number.isFinite(body.size)) { offset = body.size; continue; }
         if (!res.ok) throw new Error(body.error || `upload failed (${res.status})`);
         offset = body.size;
-        row.querySelector('i').style.width = `${Math.round((offset / file.size) * 100)}%`;
-        row.querySelector('.pct').textContent = `${Math.round((offset / file.size) * 100)}%`;
+        const pct = `${Math.round((offset / file.size) * 100)}%`;
+        row.querySelector('i').style.width = pct;
+        row.querySelector('.pct').textContent = pct;
       }
       return { uploadId, name: file.name, mime: file.type || (file.name.toLowerCase().endsWith('.mov') ? 'video/quicktime' : 'video/mp4'), total: file.size };
     }
@@ -436,25 +349,24 @@
       const chosen = files.slice(0, 3);
       if (chosen.some((f) => f.size > 100 * 1024 * 1024)) return toast('Each clip can be up to 100 MB.');
       uploading = true;
-      $('chooseBtn').disabled = true;
+      $('addBtn').disabled = true;
       const box = $('uploads');
       box.innerHTML = chosen.map((f, i) => `<div class="up" data-i="${i}"><span class="name">${esc(f.name)}</span><span class="pct">0%</span><span class="bar"><i></i></span></div>`).join('');
       try {
         const clips = await Promise.all(chosen.map((f, i) => uploadFile(f, box.querySelector(`[data-i="${i}"]`))));
-        const caption = $('direction').value.trim();
-        const res = await call('/web/clips', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clips, caption }) });
+        const res = await call('/web/clips', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clips }) });
         if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'could not start the cut');
-        $('direction').value = '';
         toast('Stuck. Watching your footage…');
         selectedProject = null; // follow the new project
         selectedVersion = null;
         setTimeout(() => { box.innerHTML = ''; }, 1200);
         poll(true);
       } catch (err) {
+        box.innerHTML = '';
         toast(`Upload failed: ${err.message}`);
       } finally {
         uploading = false;
-        $('chooseBtn').disabled = false;
+        $('addBtn').disabled = false;
       }
     }
 
@@ -469,6 +381,15 @@
     }
     $('composer').addEventListener('submit', (e) => { e.preventDefault(); const i = $('say'); say(i.value); i.value = ''; });
     $('chips').addEventListener('click', (e) => { const b = e.target.closest('[data-say]'); if (b) say(b.dataset.say); });
+    // The same suggestions an iMessage thread gets as a poll; a tap is a vote (src/polls.ts).
+    $('pollChips').addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-opt]');
+      if (!b || b.disabled) return;
+      b.disabled = true;
+      const res = await call('/web/poll-votes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messageId: b.dataset.poll, optionId: b.dataset.opt }) });
+      if (!res.ok) { b.disabled = false; return toast('Could not add that. Try again.'); }
+      poll(true);
+    });
     $('keepBtn').addEventListener('click', () => say('KEEP'));
     // Opens this reel in a live session (camera, pointing, voice, notes); this browser is the host.
     $('liveBtn').addEventListener('click', async () => {
@@ -480,14 +401,14 @@
     });
 
     // ---------- derived status ----------
-    const STAGE_LABEL = { load: 'Loading clips', gemini: 'Gemini 4 is watching', render: 'Cutting', probe: 'Checking the export', store: 'Saving', deliver: 'Delivering', done: 'Done' };
+    const STAGE_LABEL = { load: 'Loading clips', gemini: 'Watching', render: 'Cutting', probe: 'Checking', store: 'Saving', deliver: 'Delivering', done: 'Done' };
     function statusOf(p) {
       if (!p) return { text: 'Waiting', cls: '' };
       const running = p.jobs.find((j) => j.status === 'running');
       const queued = p.jobs.find((j) => j.status === 'queued');
       const pendingClips = p.sources.filter((s) => s.status === 'pending' || s.status === 'downloading').length;
-      if (p.state === 'collecting' || pendingClips) return { text: pendingClips ? 'Reading your clips' : 'Collecting clips', cls: 'live' };
-      if (running) return { text: running.kind === 'revise' ? `Revising · ${STAGE_LABEL[running.stage] || 'working'}` : (STAGE_LABEL[running.stage] || 'Working'), cls: 'live' };
+      if (p.state === 'collecting' || pendingClips) return { text: pendingClips ? 'Reading clips' : 'Collecting clips', cls: 'live' };
+      if (running) return { text: running.kind === 'revise' ? 'Revising' : (STAGE_LABEL[running.stage] || 'Working'), cls: 'live' };
       if (queued) return { text: 'Up next', cls: 'live' };
       if (p.state === 'failed') return { text: 'Could not cut', cls: 'bad' };
       if (p.versions.length) return { text: `Ready · v${p.versions[p.versions.length - 1].versionNo}`, cls: 'ready' };
@@ -495,100 +416,62 @@
       return { text: 'Working', cls: 'live' };
     }
     const busy = (p) => p && statusOf(p).cls === 'live';
+    const nameOf = (p) => p.sources[0]?.name?.replace(/\.[^.]+$/, '') || 'Your reel';
 
     // ---------- render ----------
     function render() {
       if (!state) return;
-      const line = state.line;
-      if (line) {
-        const pretty = line.replace(/^\+1(\d{3})(\d{3})(\d{4})$/, '+1 ($1) $2-$3');
-        $('lineLabel').textContent = pretty;
-        // The free line only answers people on its list, so texting starts at /join (10 seconds, one tap).
-        $('smsPill').href = '/join';
-        $('smsLine').innerHTML = `On your phone? <a href="/join">Get on Sticky's line</a> and text your footage to ${esc(pretty)}. Works in group chats too.`;
-      }
       const projects = state.projects;
-      if (!projects.length) { $('studio').classList.add('hidden'); $('history').classList.add('hidden'); return; }
+      document.body.classList.toggle('empty', !projects.length);
+      if (!projects.length) return;
       const current = projects.find((p) => p.id === selectedProject) || projects.find((p) => p.id === state.currentProjectId) || projects[0];
       selectedProject = current.id;
-      $('studio').classList.remove('hidden');
 
-      // header
       const st = statusOf(current);
       $('projStatus').className = `status ${st.cls}`;
       $('projStatusText').textContent = st.text;
-      const firstClip = current.sources[0];
-      $('projTitle').textContent = firstClip?.name ? firstClip.name.replace(/\.[^.]+$/, '') : 'Your reel';
-      const total = current.sources.reduce((s, c) => s + (c.duration_ms || 0), 0);
-      $('projMeta').textContent = `${ago(current.created_at)} · ${current.sources.length} clip${current.sources.length === 1 ? '' : 's'}${total ? ` · ${fmt(total)} of footage` : ''}`;
+      $('projTitle').textContent = nameOf(current);
 
       // versions + player
       const versions = current.versions;
       if (!versions.find((v) => v.versionNo === selectedVersion)) selectedVersion = versions.length ? versions[versions.length - 1].versionNo : null;
-      $('versions').innerHTML = versions.map((v) => `<button class="vtab" role="tab" aria-selected="${v.versionNo === selectedVersion}" data-v="${v.versionNo}">v${v.versionNo} · ${fmt(v.durationMs)}${v.kept ? '<span class="kept">★</span>' : ''}</button>`).join('');
+      $('versions').innerHTML = versions.length > 1 ? versions.map((v) => `<button class="vtab" role="tab" aria-selected="${v.versionNo === selectedVersion}" data-v="${v.versionNo}">v${v.versionNo}${v.kept ? ' ★' : ''}</button>`).join('') : '';
       const v = versions.find((x) => x.versionNo === selectedVersion);
-      $('liveBtn').classList.toggle('hidden', !v);
       const screen = $('screen');
       const playing = screen.querySelector('video');
       if (v) {
         if (!playing || playing.dataset.src !== v.url) {
           screen.innerHTML = `<video controls playsinline loop preload="auto" data-src="${esc(v.url)}" src="${esc(v.url)}"></video>`;
-          const vid = screen.querySelector('video');
-          vid.play().catch(() => {});
+          screen.querySelector('video').play().catch(() => {});
         }
         $('downloadBtn').href = v.url;
         $('downloadBtn').setAttribute('download', `sticky-v${v.versionNo}.mp4`);
-        $('downloadBtn').classList.remove('hidden');
         $('keepBtn').disabled = v.kept;
-        $('keepBtn').textContent = v.kept ? 'Kept ★' : 'Keep this one';
+        $('keepBtn').textContent = v.kept ? 'Kept ★' : 'Keep';
       } else {
         screen.innerHTML = `<div class="wait"><div class="drip"></div><b>${esc(st.cls === 'bad' ? 'That one didn’t cut.' : 'Cutting your reel')}</b><span>${esc(st.text)}</span></div>`;
-        $('downloadBtn').classList.add('hidden');
         $('keepBtn').disabled = true;
       }
+      // Nothing to keep, download, open live or tweak until there's a cut.
+      for (const id of ['keepBtn', 'downloadBtn', 'liveBtn', 'chips']) $(id).classList.toggle('hidden', !v);
 
-      // why
+      // why this cut: the technique, one paragraph, the source and any AI-made parts
       if (v) {
         const t = v.technique;
-        const dated = t.kind === 'dated';
-        $('why').innerHTML = `
-          <div class="technique">${esc(t.title)}</div>
-          <div class="evidence">${dated
-            ? `${esc(t.evidence)} · <a href="${esc(t.url)}" target="_blank" rel="noopener">source</a>`
-            : `Evergreen technique · no fresh trend fit this footage`}</div>
-          <p>${esc(v.explanation)}</p>
-          ${t.hookEvidence ? `<div class="proof">
-            <div class="proof-k">Opening borrowed from a measured outlier</div>
-            <div class="proof-v"><a href="${esc(t.hookEvidence.postLink)}" target="_blank" rel="noopener">@${esc(t.hookEvidence.handle)}</a> · <b>${esc(t.hookEvidence.views)}</b> views on ${esc(t.hookEvidence.followers)} followers · <b>${esc(t.hookEvidence.viewsPerFollower)}×</b> their following · ${esc({ instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube Shorts' }[t.hookEvidence.platform] || t.hookEvidence.platform)}</div>
-            <div class="proof-s">Same opening: ${esc(t.hookEvidence.sharedPattern)} · real counts from Viral Outliers' trending feed, not a prediction for your reel</div>
-          </div>` : ''}
-          ${v.direction ? `<div class="muted">Your note: “${esc(v.direction)}”</div>` : ''}
-          <div class="muted">${v.shots} shot${v.shots === 1 ? '' : 's'} · ${fmt(v.durationMs)}${v.mutedShots ? ` · ${v.mutedShots} muted` : ''}${v.generatedShots ? ` · <span class="ai">${v.generatedShots} AI-made shot${v.generatedShots === 1 ? '' : 's'}</span>` : ''} · hard cuts</div>
-          ${v.music ? `<div class="muted"><span class="ai">AI music</span> Lyria: ${esc(v.music.label)} · ${v.music.mode === 'replace' ? 'replaces the original sound' : 'under your original audio'}</div>` : ''}`;
-        $('whyWrap').classList.remove('hidden');
+        const tags = [
+          t.kind === 'dated' ? `<a href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.evidence)}</a>` : '<span>Evergreen technique</span>',
+          v.generatedShots ? `<span class="ai">${v.generatedShots} AI shot${v.generatedShots === 1 ? '' : 's'}</span>` : '',
+          v.music ? '<span class="ai">AI music</span>' : '',
+        ].join('');
+        $('why').innerHTML = `<div class="technique">${esc(t.title)}</div><p>${esc(v.explanation)}</p><div class="tags">${tags}</div>`;
       } else {
-        $('whyWrap').classList.add('hidden');
+        $('why').innerHTML = '';
       }
 
-      // edit chain
-      const stages = [];
-      const clipsIn = current.sources.filter((s) => s.status === 'normalized').length;
-      stages.push({ cls: clipsIn === current.sources.length && clipsIn ? 'done' : (current.sources.some((s) => s.status === 'failed') ? 'bad' : 'live'), what: `<b>Footage in</b><small>${clipsIn}/${current.sources.length} clip${current.sources.length === 1 ? '' : 's'} normalized · rotation, frame rate and audio fixed</small>`, ms: '' });
-      let vno = 0;
-      for (const j of current.jobs) {
-        const ms = Object.values(j.stage_ms || {}).reduce((a, b) => a + b, 0);
-        const unsupported = (j.error || '').startsWith('unsupported:');
-        if (j.status === 'done' && !unsupported) vno += 1;
-        const label = j.kind === 'v1'
-          ? `<b>${vno && j.status === 'done' ? `v${vno} · ` : ''}First cut</b><small>${j.direction ? `Direction: “${esc(j.direction.split('\n').join(' · '))}”` : 'No direction, decided from the footage'}</small>`
-          : `<b>${j.status === 'done' && !unsupported ? `v${vno} · ` : ''}“${esc(j.direction)}”</b><small>${unsupported ? esc(j.error.replace('unsupported: ', '')) : j.status === 'failed' ? 'Could not apply that change; the last cut is unchanged.' : 'Targeted change; untouched shots keep their exact boundaries.'}</small>`;
-        const cls = j.status === 'done' ? (unsupported ? 'bad' : 'done') : j.status === 'running' || j.status === 'queued' ? 'live' : j.status === 'failed' ? 'bad' : '';
-        stages.push({ cls, what: label, ms: ms ? secs(ms) : (j.status === 'running' ? STAGE_LABEL[j.stage] || '' : '') });
-      }
-      $('stages').innerHTML = stages.map((s) => `<div class="stage ${s.cls}"><span class="tick"></span><span class="what">${s.what}</span><span class="ms">${esc(s.ms)}</span></div>`).join('');
-
-      // clips
-      $('clips').innerHTML = current.sources.map((s) => `<div class="clip"><span class="n">${s.generated ? '<span class="ai">AI</span> ' : ''}${esc(s.name || s.clip_id)}</span><span class="m">${s.duration_ms ? fmt(s.duration_ms) : '…'}${s.generated ? (/^AI-edited/.test(s.name || '') ? ' · edited with Gemini Omni' : ' · generated with Veo') : s.width ? ` · ${s.width > s.height ? 'landscape' : 'portrait'}` : ''}${s.has_audio === false ? ' · silent' : ''}</span></div>`).join('');
+      // suggestions (the poll after the first cut)
+      const pl = current.poll;
+      $('pollChips').classList.toggle('hidden', !pl);
+      if (pl) $('pollChips').innerHTML = `<span class="suggest-label">Sticky suggests</span>${pl.options.map((o) => `<button class="chip vote" type="button" data-poll="${esc(pl.messageId)}" data-opt="${esc(o.optionId)}"${o.applied ? ' disabled' : ''}>${o.applied ? '✓' : '+'} ${esc(o.label)}</button>`).join('')}`;
 
       // conversation
       const chat = $('chat');
@@ -599,18 +482,18 @@
       if (replies.length > lastSeenReplies && lastSeenReplies > 0) toast(replies[replies.length - 1].body.split('\n')[0]);
       lastSeenReplies = replies.length;
 
-      // history
+      // earlier reels
       const earlier = projects.filter((p) => p.id !== current.id);
       $('history').classList.toggle('hidden', !earlier.length);
+      $('historySum').textContent = `Earlier reels · ${earlier.length}`;
       $('historyList').innerHTML = earlier.map((p) => {
         const s = statusOf(p);
-        const name = p.sources[0]?.name?.replace(/\.[^.]+$/, '') || 'Reel';
-        return `<button class="hrow" data-p="${p.id}"><span class="t"><b>${esc(name)}</b><small>${ago(p.created_at)} · ${p.versions.length} version${p.versions.length === 1 ? '' : 's'}${p.kept_version ? ` · kept v${p.kept_version}` : ''}</small></span><span class="status ${s.cls}"><span class="dot"></span>${esc(s.text)}</span></button>`;
+        return `<button class="hrow" type="button" data-p="${p.id}"><b>${esc(nameOf(p))}</b><span class="status ${s.cls}"><span class="dot"></span>${esc(s.text)}</span></button>`;
       }).join('');
     }
 
     $('versions').addEventListener('click', (e) => { const b = e.target.closest('[data-v]'); if (!b) return; selectedVersion = Number(b.dataset.v); render(); });
-    $('historyList').addEventListener('click', (e) => { const b = e.target.closest('[data-p]'); if (!b) return; selectedProject = b.dataset.p; selectedVersion = null; render(); window.scrollTo({ top: $('studio').offsetTop - 16, behavior: reduced ? 'auto' : 'smooth' }); });
+    $('historyList').addEventListener('click', (e) => { const b = e.target.closest('[data-p]'); if (!b) return; selectedProject = b.dataset.p; selectedVersion = null; $('history').open = false; render(); });
 
     // ---------- polling ----------
     async function poll(soon = false) {
@@ -626,6 +509,7 @@
           render();
         }
       } catch {}
+      document.body.classList.remove('boot');
       const active = uploading || (state && state.projects.some(busy));
       pollTimer = setTimeout(poll, active ? 1500 : 8000);
     }

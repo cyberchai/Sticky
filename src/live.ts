@@ -326,7 +326,7 @@ async function handleSay(project: any, person: Person, peer: string, text: strin
       return void reply(project.id, whyThisCut({
         segments: latest.segments, technique: latest.technique, analysis: project.analysis,
         explanation: latest.explanation, direction: latest.direction, versionNo: latest.version_no, music: latest.music,
-        overlays: latest.overlays, transitions: latest.transitions,
+        overlays: latest.overlays, transitions: latest.transitions, captions: latest.captions,
       }));
     case 'keep':
       await q('UPDATE sticky.versions SET kept = true WHERE id = $1', [latest.id]);

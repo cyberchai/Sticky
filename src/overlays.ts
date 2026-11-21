@@ -233,37 +233,47 @@ export function avoid(box: Box, placed: Box[]): Box {
 
 const sec = (ms: number) => (ms / 1000).toFixed(3);
 
+/** An overlay shown in its own time window rather than its shot's (a caption chunk). */
+export interface TimedOverlay { overlay: Overlay; startMs: number; endMs: number }
+
 /**
  * Burn the overlays into a rendered cut. Same length, same encoder settings as the render, audio copied.
- * Each PNG is looped as a stream so its entrance can fade and slide over time.
+ * Timed items go after the overlays, so they're the ones that move to stay clear.
  */
-export async function burnOverlays(input: string, output: string, segments: Segment[], transitions: Transition[], overlays: Overlay[]): Promise<void> {
+export async function burnOverlays(
+  input: string, output: string, segments: Segment[], transitions: Transition[], overlays: Overlay[],
+  timed: TimedOverlay[] = [],
+): Promise<void> {
   const dir = cachePath(`tmp/overlays/${crypto.randomUUID()}`);
   await fsp.mkdir(dir, { recursive: true });
   try {
     const total = timeline(segments, transitions).totalMs;
-    const windows = overlayWindows(overlays, segments, transitions);
+    const windows = [...overlayWindows(overlays, segments, transitions), ...timed];
+    const items = [...overlays, ...timed.map((t) => t.overlay)];
+    const quick = (k: number) => k >= overlays.length; // caption chunks: a still image and a small pop, no fade
     const args = ['-y', '-hide_banner', '-loglevel', 'error', '-i', input];
     const chains: string[] = [];
     let base = '0:v';
     const placed: Array<Box & { k: number }> = [];
-    for (const [k, o] of overlays.entries()) {
+    for (const [k, o] of items.entries()) {
       const { png, ...box } = await place(o);
       const sameTime = placed.filter((p) => windows[p.k].startMs < windows[k].endMs && windows[k].startMs < windows[p.k].endMs);
       const { left, top } = avoid(box, sameTime);
       placed.push({ ...box, left, top, k });
       const file = path.join(dir, `${o.id}.png`);
       await fsp.writeFile(file, png);
-      args.push('-loop', '1', '-framerate', String(CANVAS.fps), '-t', sec(total), '-i', file);
+      // A fade needs frames over time, so those PNGs loop as a stream; a still is enough otherwise.
+      if (quick(k)) args.push('-i', file);
+      else args.push('-loop', '1', '-framerate', String(CANVAS.fps), '-t', sec(total), '-i', file);
       const n = k + 1; // input 0 is the cut
       const start = sec(windows[k].startMs);
       const end = sec(windows[k].endMs);
-      const entranceS = o.animation === 'pop' ? 0.22 : 0.4;
+      const entranceS = quick(k) ? 0.15 : o.animation === 'pop' ? 0.22 : 0.4;
       // 1 → 0 over the entrance, eased out (cubic).
       const ease = `pow(1-min(1,max(0,(t-${start})/${entranceS})),3)`;
       const dx = o.animation === 'slide_left' ? 140 : 0;
-      const dy = o.animation === 'slide_up' ? 90 : o.animation === 'pop' ? 30 : 0;
-      const fade = o.animation === 'none' ? '' : `,fade=t=in:st=${start}:d=${entranceS}:alpha=1`;
+      const dy = quick(k) ? 12 : o.animation === 'slide_up' ? 90 : o.animation === 'pop' ? 30 : 0;
+      const fade = o.animation === 'none' || quick(k) ? '' : `,fade=t=in:st=${start}:d=${entranceS}:alpha=1`;
       chains.push(`[${n}:v]format=rgba${fade}[o${n}]`);
       const x = dx ? `${left}+${dx}*${ease}` : String(left);
       const y = dy ? `${top}+${dy}*${ease}` : String(top);
@@ -280,7 +290,7 @@ export async function burnOverlays(input: string, output: string, segments: Segm
     );
     const t0 = Date.now();
     await execFileP('ffmpeg', args, { timeout: 180_000, maxBuffer: 8 * 1024 * 1024 });
-    log('overlays', { burned: overlays.length, ms: Date.now() - t0, what: describeOverlays(overlays).slice(0, 160) });
+    log('overlays', { burned: overlays.length, captions: timed.length || undefined, ms: Date.now() - t0, what: describeOverlays(overlays).slice(0, 160) });
   } finally {
     await fsp.rm(dir, { recursive: true, force: true });
   }

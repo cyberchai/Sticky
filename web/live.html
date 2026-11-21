@@ -56,10 +56,11 @@
     .join-card .mark { height: 28px; }
     .join-card h1 { font-family: var(--display); font-style: italic; font-weight: 900; font-size: 34px; line-height: 1.05; }
     .join-card p { color: var(--ink-2); font-size: 14px; }
+    .join-card p:empty { display: none; }
+    .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
     .preview { position: relative; aspect-ratio: 4 / 3; border-radius: var(--r-lg); overflow: hidden; background: var(--ink); display: grid; place-items: center; color: var(--on-ink-2); font-size: 13px; text-align: center; padding: 12px; }
     .preview video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
     .join-card label { display: grid; gap: 6px; font-size: 13px; font-weight: 700; }
-    .join-card label small { font-weight: 500; color: var(--ink-2); }
     .toggles { display: flex; gap: 8px; }
     .join-card label.toggle, .toggle { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 999px; border: 1.5px solid var(--line); font-size: 13px; font-weight: 600; cursor: pointer; }
     .err { color: var(--warn); font-size: 13px; font-weight: 600; min-height: 1em; }
@@ -72,7 +73,7 @@
     .ttl b { font-family: var(--display); font-style: italic; font-weight: 900; font-size: 22px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .badge { padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 800; letter-spacing: .08em; background: #E4572E; color: #fff; display: inline-flex; align-items: center; gap: 6px; }
     .badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: #fff; animation: pulse 1.2s ease-in-out infinite; }
-    .role { font-size: 12px; color: var(--on-ink-2); white-space: nowrap; }
+    .role { display: none; }
     @keyframes pulse { 50% { opacity: .3 } }
     .avatars { display: flex; }
     .av { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 800; color: #fff; border: 2px solid var(--ink-deep); margin-left: -6px; }
@@ -201,15 +202,15 @@
     <div class="join-card">
       <img class="mark" src="/assets/sticky-mark.svg" alt="sticky" />
       <h1 id="joinTitle">Edit this reel live</h1>
-      <p id="joinSub">Join with your camera. Point at the video and say <b>“Sticky, add a dog here”</b>. Everyone in the room sees the change.</p>
-      <div class="preview" id="preview"><span id="previewMsg">Camera preview</span><video id="joinCam" muted playsinline autoplay></video></div>
-      <label>Your name <input class="field" id="nameIn" maxlength="40" autocomplete="name" /></label>
-      <label id="phoneWrap"><span id="phoneLabel">Phone <small>(optional, so teammates can tag you by text)</small></span><input class="field" id="phoneIn" type="tel" inputmode="tel" autocomplete="tel" placeholder="+1 555 123 4567" /></label>
+      <p id="joinSub"></p>
+      <div class="preview" id="preview"><span id="previewMsg"></span><video id="joinCam" muted playsinline autoplay></video></div>
+      <label><span class="sr">Your name</span><input class="field" id="nameIn" maxlength="40" autocomplete="name" placeholder="Your name" /></label>
+      <label id="phoneWrap"><span class="sr" id="phoneLabel">Phone, optional</span><input class="field" id="phoneIn" type="tel" inputmode="tel" autocomplete="tel" placeholder="Phone (optional)" /></label>
       <div class="toggles">
         <label class="toggle"><input type="checkbox" id="camOn" checked /> Camera</label>
         <label class="toggle"><input type="checkbox" id="micOn" checked /> Mic</label>
       </div>
-      <button class="btn primary" id="joinBtn" type="button">Join the edit</button>
+      <button class="btn primary" id="joinBtn" type="button">Join</button>
       <div class="err" id="joinErr" role="alert"></div>
     </div>
   </div>
@@ -222,7 +223,7 @@
       <span class="conn" id="conn"></span>
       <div class="avatars" id="avatars"></div>
       <button class="btn ghost small" id="inviteBtn" type="button">Invite</button>
-      <button class="btn yellow small hidden" id="finishBtn" type="button">Finish · text me the reel</button>
+      <button class="btn yellow small hidden" id="finishBtn" type="button">Finish</button>
     </header>
 
     <div class="grid">
@@ -255,7 +256,7 @@
           <button class="ctl" id="camBtn" type="button">Camera on</button>
           <button class="ctl listen" id="listenBtn" type="button">Sticky is listening</button>
         </div>
-        <div class="hint" id="hint">Point at the reel and say <b>“Sticky, add a dog here”</b>, or hold <b>Space</b> while you talk. Pinch or click to pin a spot.</div>
+        <div class="hint">Point and say <b>“Sticky, add a dog here”</b></div>
       </section>
 
       <section class="side-col" aria-label="Room">
@@ -270,7 +271,7 @@
         <form class="composer" id="composer" autocomplete="off">
           <div class="pinned hidden" id="pinnedChip"><span id="pinnedText"></span><button type="button" id="unpin" aria-label="Unpin">×</button></div>
           <div class="mention-pop hidden" id="mentionPop" role="listbox"></div>
-          <input class="field" id="cmd" maxlength="500" placeholder="Ask Sticky for a change, or “note: … @Sam”" aria-label="Ask Sticky or leave a note" />
+          <input class="field" id="cmd" maxlength="500" placeholder="Ask Sticky, or “note: …”" aria-label="Ask Sticky or leave a note" />
           <button class="btn primary small" type="submit">Send</button>
         </form>
       </section>
@@ -279,13 +280,11 @@
 
   <div class="pop hidden" id="invitePop" role="dialog" aria-label="Invite">
     <button class="close" type="button" data-close>×</button>
-    <h3>Invite people</h3>
-    <div class="sub">Anyone with this link can join the edit.</div>
+    <h3>Invite</h3>
     <div class="row"><input class="field" id="guestLink" readonly /><button class="btn primary small" id="copyLink" type="button">Copy</button></div>
     <div class="sub" style="font-weight:700;color:var(--ink)">Your network</div>
     <div id="networkList"></div>
     <form class="hidden" id="contactForm" style="display:grid;gap:8px">
-      <div class="sub">Add someone so you can tag them in notes and text them an invite.</div>
       <div class="row"><input class="field" id="contactName" placeholder="Name" maxlength="40" /><input class="field" id="contactPhone" type="tel" placeholder="Phone" /></div>
       <button class="btn small" type="submit">Add to network</button>
     </form>
@@ -293,7 +292,7 @@
 
   <div class="pop hidden" id="finishPop" role="dialog" aria-label="Finish">
     <button class="close" type="button" data-close>×</button>
-    <h3>Finish the reel</h3>
+    <h3>Finish</h3>
     <div class="sub" id="finishSub"></div>
     <label id="finishPhoneWrap" class="hidden" style="display:grid;gap:6px;font-size:13px;font-weight:700">Your phone<input class="field" id="finishPhone" type="tel" placeholder="+1 555 123 4567" /></label>
     <button class="btn primary" id="finishGo" type="button">Text it to me</button>
@@ -385,7 +384,7 @@
       local?.getTracks().forEach((t) => t.stop());
       local = await getMedia();
       $('joinCam').srcObject = local;
-      $('previewMsg').textContent = local?.getVideoTracks().length ? '' : (camWanted() ? 'Camera blocked. You can still join and point with your mouse.' : 'Camera off');
+      $('previewMsg').textContent = local?.getVideoTracks().length ? '' : (camWanted() ? 'Camera blocked · point with your mouse' : 'Camera off');
     }
     $('camOn').addEventListener('change', preview);
     $('micOn').addEventListener('change', preview);
@@ -395,11 +394,12 @@
       if (!S) return;
       const host = S.role === 'host';
       if (host && S.project.origin === 'web' && !S.host.phoneOnFile) {
-        $('phoneLabel').innerHTML = 'Your phone <small>(we’ll text you the final reel when you finish)</small>';
+        $('phoneLabel').textContent = 'Your phone, to text you the final reel';
+        $('phoneIn').placeholder = 'Phone, for the final reel';
       } else if (host) {
         $('phoneWrap').classList.add('hidden');
       }
-      $('joinBtn').textContent = host ? 'Start the live edit' : 'Join the edit';
+      $('joinBtn').textContent = host ? 'Start' : 'Join';
     }
 
     $('joinBtn').addEventListener('click', async () => {
@@ -1052,7 +1052,7 @@
       $('finishBtn').classList.toggle('hidden', !host);
       $('contactForm').classList.toggle('hidden', !host);
       $('guestLink').value = `${location.origin}${S.guestLink}`;
-      $('networkList').innerHTML = (S.network || []).map((p) => `<div class="person"><span class="nm">${esc(p.name)}</span><span class="chip">${p.hasPhone ? 'has phone' : 'no phone'}</span>${host && p.hasPhone ? `<button class="btn small" type="button" data-invite="${p.handle}">Text invite</button>` : ''}</div>`).join('') || '<div class="sub">People who join show up here, so you can tag them.</div>';
+      $('networkList').innerHTML = (S.network || []).map((p) => `<div class="person"><span class="nm">${esc(p.name)}</span><span class="chip">${p.hasPhone ? 'has phone' : 'no phone'}</span>${host && p.hasPhone ? `<button class="btn small" type="button" data-invite="${p.handle}">Text invite</button>` : ''}</div>`).join('') || '<div class="sub">No one yet.</div>';
       if (!$('joinView').classList.contains('hidden')) renderJoin();
     }
     const openPop = (id) => { for (const p of document.querySelectorAll('.pop')) p.classList.toggle('hidden', p.id !== id); };

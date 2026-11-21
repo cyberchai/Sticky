@@ -11,6 +11,7 @@ import { one, q, tx } from './db.js';
 import { whyThisCut } from './explain.js';
 import { routeText } from './gemini.js';
 import { errMsg, last4, log } from './log.js';
+import { applyVote } from './polls.js';
 import { transcribeVoice } from './voice.js';
 import { CONTACT_LIMIT, addContacts, joinUrl, phonesIn } from './contacts.js';
 import { linqCall, openChat } from './linq.js';
@@ -35,6 +36,8 @@ export interface ParsedLinq {
   roster: string[];
   otherMedia: number;
   receipt: { status: ReceiptStatus; providerMessageId: string | null } | null;
+  /** poll.vote.added / poll.vote.removed: which option of the poll (messageId) was toggled. */
+  poll: { optionId: string; action: 'added' | 'removed' } | null;
 }
 
 const RECEIPTS: Record<string, ReceiptStatus> = {
@@ -71,6 +74,7 @@ export function parseLinq(payload: any): ParsedLinq {
   });
   // Own keys only: an inherited name ("constructor") is never a receipt status.
   const status = Object.hasOwn(RECEIPTS, eventType) ? RECEIPTS[eventType] : undefined;
+  const vote = /^poll\.vote\.(added|removed)$/.exec(eventType);
   return {
     eventType,
     chatId: data.chat?.id ?? data.chat_id ?? inner.chat_id ?? null,
@@ -85,6 +89,7 @@ export function parseLinq(payload: any): ParsedLinq {
     roster: rosterOf(data),
     otherMedia,
     receipt: status ? { status, providerMessageId: data.message_id ?? inner.id ?? data.id ?? null } : null,
+    poll: vote && data.option_id ? { optionId: String(data.option_id), action: vote[1] as 'added' | 'removed' } : null,
   };
 }
 
@@ -94,7 +99,9 @@ function rosterOf(data: any): string[] {
 }
 
 /** Groups are welcome: anyone in the room can send footage or an edit. */
-function kindOf(p: ParsedLinq): 'video' | 'text' | 'receipt' | 'other' {
+function kindOf(p: ParsedLinq): 'video' | 'text' | 'receipt' | 'vote' | 'other' {
+  // Our own line's votes can echo back as poll events; only other people's votes count.
+  if (p.poll) return p.fromMe || !p.chatId || !p.messageId ? 'other' : 'vote';
   if (p.receipt) return 'receipt';
   if (p.eventType !== 'message.received' || p.fromMe || !p.chatId) return 'other';
   if (p.videos.length) return 'video';
@@ -131,6 +138,12 @@ export async function acceptEvent(raw: string, providerEventId: string): Promise
       const { status, providerMessageId } = p.receipt;
       after.push(async () => {
         await handleReceipt(status, providerMessageId!);
+        await q('UPDATE sticky.events SET handled_at = now() WHERE provider_event_id = $1', [eventId]);
+      });
+    }
+    if (kind === 'vote') {
+      after.push(async () => {
+        await handleVote(p);
         await q('UPDATE sticky.events SET handled_at = now() WHERE provider_event_id = $1', [eventId]);
       });
     }
@@ -304,12 +317,30 @@ async function handleText(input: ParsedLinq, receivedAt: Date): Promise<void> {
     default:
       if (!project || project.state === 'closed') return holdBrief(chatId, text);
       if (voice) await reply(chatId, COPY.heard(text));
-      return queueEdit(project, text, receivedAt, hasCut);
+      return queueEdit(project, text, receivedAt, hasCut, p.from);
   }
 }
 
-/** Queue an edit on the project (folded into v1 if that hasn't started yet). Serialized per project by jobs.ts. */
-async function queueEdit(project: any, text: string, receivedAt: Date, hasCut: boolean): Promise<void> {
+/**
+ * A poll vote is its voter asking for that option's change, exactly as if they'd texted it (no routing:
+ * a vote is always aimed at Sticky, in a group too). Serialized per chat, so a group's votes queue in order.
+ */
+async function handleVote(p: ParsedLinq): Promise<void> {
+  await serial(p.chatId!, async () => {
+    const r = await applyVote({ messageId: p.messageId!, optionId: p.poll!.optionId, voter: p.from, action: p.poll!.action });
+    if (!r) return;
+    const project = await one('SELECT * FROM sticky.projects WHERE id = $1', [r.projectId]);
+    if (!project || project.state === 'closed') return;
+    await queueEdit(project, r.instruction, new Date(), Boolean(await latestVersion(project.id)), p.from === 'web' ? null : p.from);
+  });
+}
+
+/**
+ * Queue an edit on the project (folded into v1 if that hasn't started yet). Serialized per project by
+ * jobs.ts. The author is recorded (migration 005's columns; a trigger copies it onto the version) so a
+ * group can see whose request each version answers. Only the last 4 digits are ever shown.
+ */
+async function queueEdit(project: any, text: string, receivedAt: Date, hasCut: boolean, author: string | null = null): Promise<void> {
   // v1 not started yet: fold the note into it rather than cutting twice.
   const folded = await one(
     `UPDATE sticky.jobs SET direction = concat_ws(E'\\n', direction, $2::text), inbound_at = $3
@@ -318,9 +349,11 @@ async function queueEdit(project: any, text: string, receivedAt: Date, hasCut: b
   );
   if (folded) return;
   const kind = hasCut || project.state === 'rendering' || project.state === 'queued' ? 'revise' : 'v1';
+  const web = String(project.chat_id ?? '').startsWith('web:');
   await q(
-    `INSERT INTO sticky.jobs (project_id, kind, direction, inbound_at) VALUES ($1,$2,$3,$4)`,
-    [project.id, kind, kind === 'v1' ? [...(project.direction ?? []), text].join('\n') : text, receivedAt],
+    `INSERT INTO sticky.jobs (project_id, kind, direction, inbound_at, channel, author_handle, author_name) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+    [project.id, kind, kind === 'v1' ? [...(project.direction ?? []), text].join('\n') : text, receivedAt,
+      web ? 'web' : 'sms', web ? null : author, web || !author ? null : last4(author)],
   );
   if (project.state === 'failed') await q(`UPDATE sticky.projects SET state = 'queued' WHERE id = $1`, [project.id]);
 }
@@ -385,7 +418,7 @@ async function handleGroupText(p: ParsedLinq, project: any, receivedAt: Date, vo
       }
       if (!project || project.state === 'closed') return holdBrief(chatId, text);
       if (voice) await reply(chatId, COPY.heard(text));
-      return queueEdit(project, text, receivedAt, hasCut);
+      return queueEdit(project, text, receivedAt, hasCut, p.from);
     default:
       return; // people talking to each other
   }
@@ -430,6 +463,7 @@ async function why(chatId: string, project: any): Promise<void> {
     music: v.music,
     overlays: v.overlays,
     transitions: v.transitions,
+    captions: v.captions,
   }));
 }
 

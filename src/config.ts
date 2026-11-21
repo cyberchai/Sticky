@@ -75,6 +75,9 @@ export const COPY = {
   unsupported: (reason: string) => `${reason} Your last cut is unchanged.`,
   generating: (label: string) => `There's no ${label} in your footage, so I'm generating one with Veo (AI-generated, about 30 seconds).`,
   generateFailed: (reason: string) => `I couldn't generate that shot (${reason}). Your last cut is unchanged.`,
+  /** Group chats: name whose request a version answers, so a room of editors can follow along. */
+  deliveredFor: (versionNo: number, who: string, said: string) =>
+    `Here's v${versionNo} for ${who}: “${said.length > 80 ? `${said.slice(0, 77)}…` : said}”. Anyone here can text a change.`,
   groupHello: "Hi all, I'm Sticky. Send clips and I'll cut a reel. Anyone here can text a change or send a voice note.",
   groupStop: "To stop me in this group, remove me from the chat. I'll only answer messages meant for me.",
   heard: (text: string) => `Heard: “${text}”`,

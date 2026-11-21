@@ -10,7 +10,13 @@ import { one, q } from './db.js';
 import { sendToChat, uploadAttachment } from './linq.js';
 import { liveLinkLine, liveVersionReady } from './live.js';
 import { errMsg, log } from './log.js';
+import { sendPoll } from './polls.js';
 import { ensureLocal } from './store.js';
+
+/** After a first cut lands (any channel, 1:1 or group): the "want any of these?" poll. Never blocks delivery. */
+const pollAfter = (v: any) => {
+  if (v.version_no === 1) void sendPoll(v.id).catch((err) => log('poll', { version: v.id, failed: errMsg(err) }, 'warn'));
+};
 
 export type DeliveryOutcome = 'accepted' | 'link_degraded' | 'superseded' | 'failed' | 'skipped';
 
@@ -41,9 +47,14 @@ export async function deliverVersion(versionId: string): Promise<DeliveryOutcome
     await q(`UPDATE sticky.versions SET delivery = 'delivered', accepted_at = now(), delivered_at = now() WHERE id = $1`, [v.id]);
     await say(ctx.chat_id, COPY.delivered, v.id);
     log('deliver', { version: v.id, project: v.project_id, v: v.version_no, outcome: 'web' });
+    pollAfter(v);
     return 'accepted';
   }
-  if (config.forceLink) return sendLinkFallback(v.id, 'STICKY_FORCE_LINK');
+  if (config.forceLink) {
+    const outcome = await sendLinkFallback(v.id, 'STICKY_FORCE_LINK');
+    if (outcome === 'link_degraded') pollAfter(v);
+    return outcome;
+  }
   const t0 = Date.now();
   try {
     const file = await ensureLocal(v.out_key);
@@ -52,13 +63,19 @@ export async function deliverVersion(versionId: string): Promise<DeliveryOutcome
     const uploadMs = Date.now() - t0;
     // The first cut also carries the link to open this reel live in a browser.
     const liveLine = v.version_no === 1 ? await liveLinkLine(v.project_id).catch(() => '') : '';
-    const sent = await sendToChat(ctx.chat_id, [{ type: 'text', value: COPY.delivered + liveLine }, { type: 'media', attachment_id: attachmentId }]);
+    // In a group, say whose change this is, so a room of editors can follow along; 1:1 stays as it was.
+    const thread = await one(`SELECT is_group FROM sticky.threads WHERE chat_id = $1`, [ctx.chat_id]);
+    const caption = thread?.is_group && v.version_no > 1 && v.author_name && v.direction ? COPY.deliveredFor(v.version_no, v.author_name, v.direction) : COPY.delivered;
+    const sent = await sendToChat(ctx.chat_id, [{ type: 'text', value: caption + liveLine }, { type: 'media', attachment_id: attachmentId }]);
     await q(`UPDATE sticky.versions SET delivery = 'accepted', provider_message_id = $2, accepted_at = now() WHERE id = $1`, [v.id, sent.providerMessageId]);
     log('deliver', { version: v.id, project: v.project_id, v: v.version_no, outcome: 'accepted', message: sent.providerMessageId, service: sent.service, bytes: size, uploadMs, sendMs: Date.now() - t0 - uploadMs });
+    pollAfter(v);
     return 'accepted';
   } catch (err) {
     log('deliver', { version: v.id, attachment: 'failed', error: errMsg(err) }, 'warn');
-    return sendLinkFallback(v.id, errMsg(err));
+    const outcome = await sendLinkFallback(v.id, errMsg(err));
+    if (outcome === 'link_degraded') pollAfter(v);
+    return outcome;
   }
 }
 

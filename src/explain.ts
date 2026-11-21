@@ -34,6 +34,7 @@ export function whyThisCut(input: {
   music?: { label: string; mode: 'under' | 'replace' } | null;
   overlays?: Overlay[] | null;
   transitions?: Transition[] | null;
+  captions?: { style: string; position: string } | null;
 }): string {
   const { segments, technique, analysis } = input;
   const first = segments[0];
@@ -47,6 +48,7 @@ export function whyThisCut(input: {
   if (muted.length) lines.push(`Sound is muted on ${muted.length} shot${muted.length > 1 ? 's' : ''}.`);
   if (input.direction) lines.push(`v${input.versionNo} follows your note: “${input.direction}”.`);
   if (input.overlays?.length) lines.push(`On screen: ${describeOverlays(input.overlays)}.`);
+  if (input.captions) lines.push(`Captions: what's said, timed to your voice (${input.captions.style} style, ${input.captions.position}).`);
   if (input.transitions?.length) lines.push(`Transitions: ${input.transitions.map((t) => `${t.type.replace(/_/g, ' ')} into ${t.segmentId}`).join(', ')}.`);
   if (input.music) lines.push(`Music: AI-generated with Lyria (${input.music.label}), ${input.music.mode === 'replace' ? 'replacing the original sound' : 'under your original audio'}.`);
   if (technique.hookEvidence) {

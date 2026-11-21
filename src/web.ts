@@ -19,6 +19,7 @@ import { q } from './db.js';
 import { acceptEvent } from './inbound.js';
 import { UPLOAD_SCHEME } from './intake.js';
 import { errMsg, log } from './log.js';
+import { pollView } from './polls.js';
 import { cachePath, ensureDir, putFile } from './store.js';
 import { fmtCount } from './trends/outliers.js';
 import { evidenceLabel } from './trends/select.js';
@@ -155,13 +156,15 @@ async function threadState(thread: string): Promise<unknown> {
   const chatId = `${WEB_PREFIX}${thread}`;
   const projects = await q(`SELECT id, state, direction, kept_version, created_at FROM sticky.projects WHERE chat_id = $1 ORDER BY created_at DESC LIMIT 12`, [chatId]);
   const ids = projects.map((p: any) => p.id);
-  const [sources, versions, jobs, replies, current, sent] = await Promise.all([
+  const [sources, versions, jobs, replies, current, sent, polls] = await Promise.all([
     ids.length ? q(`SELECT project_id, clip_id, name, status, duration_ms, has_audio, width, height, error, generated FROM sticky.sources WHERE project_id = ANY($1::uuid[]) ORDER BY clip_id`, [ids]) : [],
     ids.length ? q(`SELECT project_id, version_no, segments, technique, explanation, direction, duration_ms, link_token, kept, delivery, created_at, music FROM sticky.versions WHERE project_id = ANY($1::uuid[]) AND delivery NOT IN ('pending','superseded','failed') ORDER BY version_no`, [ids]) : [],
     ids.length ? q(`SELECT project_id, kind, status, stage, stage_ms, direction, error, created_at, finished_at FROM sticky.jobs WHERE project_id = ANY($1::uuid[]) ORDER BY created_at`, [ids]) : [],
     q(`SELECT id, body, created_at FROM sticky.web_messages WHERE chat_id = $1 ORDER BY id DESC LIMIT 40`, [chatId]),
     q(`SELECT current_project_id FROM sticky.threads WHERE chat_id = $1`, [chatId]),
     q(`SELECT kind, payload->'data'->'parts' AS parts, received_at FROM sticky.events WHERE chat_id = $1 AND kind IN ('text','video') ORDER BY received_at DESC LIMIT 40`, [chatId]),
+    // The latest "want any of these?" poll per reel (src/polls.ts), shown as chips.
+    ids.length ? q(`SELECT DISTINCT ON (project_id) project_id, message_id, options FROM sticky.polls WHERE project_id = ANY($1::uuid[]) ORDER BY project_id, created_at DESC`, [ids]) : [],
   ]);
   // One conversation, oldest first: what the visitor sent and what Sticky answered.
   const conversation = [
@@ -173,6 +176,7 @@ async function threadState(thread: string): Promise<unknown> {
     }),
     ...replies.map((m: any) => ({ from: 'sticky', body: m.body, at: m.created_at })),
   ].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+  const pollByProject = new Map(polls.map((x: any) => [x.project_id, pollView(x)]));
   return {
     line: config.line,
     currentProjectId: (current[0] as any)?.current_project_id ?? null,
@@ -180,6 +184,7 @@ async function threadState(thread: string): Promise<unknown> {
     projects: projects.map((p: any) => ({
       ...p,
       sources: sources.filter((s: any) => s.project_id === p.id),
+      poll: pollByProject.get(p.id) ?? null,
       jobs: jobs.filter((j: any) => j.project_id === p.id).map(({ project_id, ...j }: any) => j),
       versions: versions.filter((v: any) => v.project_id === p.id).map((v: any) => ({
         versionNo: v.version_no,
@@ -234,7 +239,7 @@ export async function handleWeb(req: http.IncomingMessage, res: http.ServerRespo
 
   // The thread id is the visitor's only credential, so it travels in a header and never in a URL
   // (URLs land in request logs, browser history and Referer headers).
-  const isThreadRoute = p === '/web/thread' || p === '/web/clips' || p === '/web/messages' || p.startsWith('/web/uploads/');
+  const isThreadRoute = p === '/web/thread' || p === '/web/clips' || p === '/web/messages' || p === '/web/poll-votes' || p.startsWith('/web/uploads/');
   if (!isThreadRoute) return false;
   const thread = String(req.headers['x-sticky-thread'] ?? '');
   if (!ID.test(thread)) { send(res, 400, { ok: false, error: 'missing or malformed X-Sticky-Thread header' }); return true; }
@@ -278,6 +283,24 @@ export async function handleWeb(req: http.IncomingMessage, res: http.ServerRespo
     const caption = typeof body.caption === 'string' ? body.caption.trim().slice(0, 500) : '';
     if (caption) parts.push({ type: 'text', value: caption });
     await ingestWeb(linqShaped(`${WEB_PREFIX}${thread}`, parts));
+    send(res, 202, { ok: true });
+    return true;
+  }
+
+  // A tapped suggestion chip: the same poll.vote.added event an iMessage vote is, so one code path handles both.
+  if (p === '/web/poll-votes' && req.method === 'POST') {
+    const body = JSON.parse((await readRaw(req, 4 * 1024)).toString('utf8') || '{}');
+    const messageId = String(body.messageId ?? '');
+    const optionId = String(body.optionId ?? '');
+    if (!/^web-poll-[0-9a-f-]{36}$/.test(messageId) || !/^[0-9a-f-]{36}$/.test(optionId)) { send(res, 400, { ok: false }); return true; }
+    const chatId = `${WEB_PREFIX}${thread}`;
+    const owned = await q(`SELECT 1 FROM sticky.polls WHERE message_id = $1 AND chat_id = $2`, [messageId, chatId]);
+    if (!owned.length) { send(res, 404, { ok: false }); return true; }
+    const { after } = await acceptEvent(JSON.stringify({
+      event_type: 'poll.vote.added',
+      data: { message_id: messageId, option_id: optionId, direction: 'inbound', chat: { id: chatId, is_group: false }, sender_handle: { handle: 'web', is_me: false } },
+    }), `web-vote-${crypto.randomUUID()}`);
+    for (const fn of after) void fn().catch((err) => log('after', { vote: messageId, error: errMsg(err) }, 'warn'));
     send(res, 202, { ok: true });
     return true;
   }

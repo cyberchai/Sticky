@@ -23,6 +23,7 @@ import { OMNI_MAX_MS, OMNI_MIN_MS, editVideo } from './omni.js';
 import { generateClip } from './veo.js';
 import { burnOverlays, keepOverlays, type Overlay } from './overlays.js';
 import { keepTransitions, renderWithTransitions, timeline, type Transition } from './transitions.js';
+import { captionChunks, captionOverlays, wordsFor, type Captions, type Word } from './captions.js';
 import { cachePath, ensureDir, ensureLocal, putFile } from './store.js';
 import { topOutliers } from './trends/outliers.js';
 import { selectCandidates } from './trends/select.js';
@@ -216,6 +217,7 @@ async function runJob(job: any): Promise<void> {
     // Text, stickers and transitions carry from the last version unless this job changes them.
     let overlays: Overlay[] = previous?.overlays ?? [];
     let transitions: Transition[] = previous?.transitions ?? [];
+    let captions: Captions | null = previous?.captions ?? null;
     if (job.kind === 'v1' || !previous) {
       const snapshot = await snapshotForCut();
       const { candidates, freshCount } = selectCandidates(snapshot, today());
@@ -253,6 +255,8 @@ async function runJob(job: any): Promise<void> {
       model = r.model;
       if (r.overlays) overlays = r.overlays;
       if (r.transitions) transitions = r.transitions;
+      if (r.captions === false) captions = null;
+      else if (r.captions) captions = r.captions;
       log('revise', { job: job.id, model, attempts: r.attempts, ms: r.ms, ops: JSON.stringify(r.ops).slice(0, 400), unsupported: r.unsupportedReason, generate: r.generate?.label, music: r.music ? `${r.music.action}:${r.music.label}` : undefined });
       // Music runs alongside any picture change.
       if (r.music) {
@@ -304,9 +308,19 @@ async function runJob(job: any): Promise<void> {
     transitions = keepTransitions(transitions, segments);
     const expected = timeline(segments, transitions).totalMs; // shorter than the shots' sum when transitions overlap them
     await timed('render', () => (transitions.length ? renderWithTransitions(segments, transitions, normPaths, outPath) : render(segments, normPaths, outPath)));
-    if (overlays.length) {
+    // Captions: each clip's timed words (aligned once, cached), mapped through this cut.
+    const captionItems = captions
+      ? await timed('captions', async () => {
+        const used = new Set(segments.map((s) => s.clipId));
+        const sources = await q(`SELECT * FROM sticky.sources WHERE project_id = $1 AND status = 'normalized'`, [project.id]);
+        const wordsByClip: Record<string, Word[]> = {};
+        await Promise.all(sources.filter((s: any) => used.has(s.clip_id)).map(async (s: any) => { wordsByClip[s.clip_id] = await wordsFor(s, project.analysis); }));
+        return captionOverlays(captionChunks(segments, transitions, wordsByClip), captions!);
+      })
+      : [];
+    if (overlays.length || captionItems.length) {
       const burned = `${outPath}.overlays.mp4`;
-      await timed('overlays', () => burnOverlays(outPath, burned, segments, transitions, overlays));
+      await timed('overlays', () => burnOverlays(outPath, burned, segments, transitions, overlays, captionItems));
       fs.renameSync(burned, outPath);
     }
     let exported = await timed('probe', () => verify(outPath, expected));
@@ -325,11 +339,11 @@ async function runJob(job: any): Promise<void> {
     await timed('store', () => putFile(outKey, outPath, 'video/mp4'));
 
     const version = await one(
-      `INSERT INTO sticky.versions (project_id, version_no, job_id, segments, technique, explanation, direction, out_key, link_token, duration_ms, music, overlays, transitions)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
+      `INSERT INTO sticky.versions (project_id, version_no, job_id, segments, technique, explanation, direction, out_key, link_token, duration_ms, music, overlays, transitions, captions)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`,
       [project.id, versionNo, job.id, JSON.stringify(segments), JSON.stringify(technique), explanation,
         job.kind === 'revise' ? job.direction : (job.direction || null), outKey, crypto.randomBytes(16).toString('hex'), exported.durationMs,
-        music ? JSON.stringify(music) : null, JSON.stringify(overlays), JSON.stringify(transitions)],
+        music ? JSON.stringify(music) : null, JSON.stringify(overlays), JSON.stringify(transitions), captions ? JSON.stringify(captions) : null],
     );
     await q(`UPDATE sticky.projects SET music = $2 WHERE id = $1`, [project.id, music ? JSON.stringify(music) : null]);
     const outcome = await timed('deliver', () => deliverVersion(version!.id));
