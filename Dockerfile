@@ -12,5 +12,7 @@ COPY src ./src
 COPY migrations ./migrations
 COPY scripts ./scripts
 COPY web ./web
+# Overlay text font (Poppins, OFL) and a fontconfig that knows only it (src/overlays.ts).
+COPY assets ./assets
 ENV NODE_ENV=production STICKY_WORK_DIR=/tmp/sticky
 CMD ["node", "--import", "tsx", "src/server.ts"]

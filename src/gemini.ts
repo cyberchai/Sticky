@@ -10,6 +10,8 @@ import { errMsg, log } from './log.js';
 import { evidenceLabel } from './trends/select.js';
 import type { Outlier } from './trends/outliers.js';
 import type { Candidate } from './trends/types.js';
+import { OVERLAY_ANIMATIONS, OVERLAY_SIZES, OVERLAY_STYLES, normalizeOverlays, type Overlay } from './overlays.js';
+import { TRANSITION_TYPES, normalizeTransitions, type Transition } from './transitions.js';
 
 let client: GoogleGenAI | null = null;
 function ai(): GoogleGenAI {
@@ -308,6 +310,39 @@ const reviseSchema = {
       required: ['action', 'label', 'prompt', 'mode'],
       propertyOrdering: ['action', 'label', 'prompt', 'mode'],
     },
+    // Text and stickers drawn over the cut: null = unchanged; a list = the COMPLETE new set.
+    overlays: {
+      type: 'array',
+      nullable: true,
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', nullable: true },
+          kind: { type: 'string', enum: ['text', 'sticker'] },
+          text: { type: 'string', nullable: true },
+          emoji: { type: 'string', nullable: true },
+          segmentId: { type: 'string', nullable: true },
+          x: { type: 'number' },
+          y: { type: 'number' },
+          size: { type: 'string', enum: [...OVERLAY_SIZES] },
+          style: { type: 'string', enum: [...OVERLAY_STYLES], nullable: true },
+          animation: { type: 'string', enum: [...OVERLAY_ANIMATIONS] },
+        },
+        required: ['id', 'kind', 'text', 'emoji', 'segmentId', 'x', 'y', 'size', 'style', 'animation'],
+        propertyOrdering: ['id', 'kind', 'text', 'emoji', 'segmentId', 'x', 'y', 'size', 'style', 'animation'],
+      },
+    },
+    // Transitions INTO shots: null = unchanged; a list = the COMPLETE new set (empty = all hard cuts).
+    transitions: {
+      type: 'array',
+      nullable: true,
+      items: {
+        type: 'object',
+        properties: { segmentId: S.str, type: { type: 'string', enum: [...TRANSITION_TYPES] }, ms: S.int },
+        required: ['segmentId', 'type', 'ms'],
+        propertyOrdering: ['segmentId', 'type', 'ms'],
+      },
+    },
     // A change to how something INSIDE the user's footage looks ("make her dress purple").
     visualEdit: {
       type: 'object',
@@ -348,7 +383,14 @@ If the user asks to add or show something that is NOT in the footage but could b
 - label: a short noun phrase ("a dog").
 - prompt: a vivid one-shot description for a video generator that matches this footage's setting, lighting and handheld-phone look; vertical 9:16; no people, no faces, no text or logos.
 - seconds: 4 unless they ask for longer; atIndex: 0-based position in the CURRENT order (current length = at the end); audio: "keep".
-If the request needs something that does not exist here (text, captions, subtitles, music, effects, speed, filters, transitions) or involves generating real or specific people, return no ops and set unsupportedReason to one short plain sentence saying what can't be done and why.
+On-screen text and stickers are supported (overlays); the brief lists the current ones. If the user asks to add, change, move, restyle or remove on-screen text (a title, a name, a label, a line of words) or a sticker/emoji, set overlays to the COMPLETE new list: keep every overlay they didn't mention exactly as it is, with its id. Otherwise overlays = null. Overlays combine with any other change in the same message.
+- kind "text": text = exactly the words they asked for, their spelling and capitalization, no emoji (an emoji goes in its own sticker). kind "sticker": emoji = ONE emoji that best matches ("a heart sticker" → ❤️, "fire" → 🔥, "dog sticker" → 🐶); text null.
+- segmentId: the shot it appears on, or null for the whole reel (the default for a title or name with no time given; "at the start"/"at the end" = the first/last shot).
+- x, y: its centre as fractions of the frame (0,0 top-left, 1,1 bottom-right). A title defaults to 0.5, 0.16; a caption line to 0.5, 0.78; a sticker to wherever they say (corners about 0.2/0.8). If they pointed at a spot, use those exact fractions. Keep y ≤ 0.85 (app buttons cover the bottom).
+- size small|medium|large (titles large, labels medium, stickers medium). style (text only, null for stickers): "clean" white with a shadow (default), "box" dark on a white box, "dark" white on a dark box, "yellow" dark on yellow.
+- animation (how it enters): "fade" (text default), "pop" (sticker default), "slide_up", "slide_left", or "none".
+Transitions between shots are supported; the brief lists the current ones (each is the transition INTO that shot from the one before). If the user asks for transitions or smoother cuts, set transitions to the COMPLETE new list; "hard cuts"/"remove the transitions" = an empty list; otherwise null. Types: crossfade, dissolve, dip_to_black, dip_to_white, slide_left, slide_right, slide_up, slide_down, wipe, zoom, circle, whip. "Add transitions" with nothing specific = crossfade into every shot after the first. ms 250-600 (default 350; shorter for punchy, longer for soft). The first shot can't have one.
+If the request needs something that does not exist here (auto-captions or subtitles of the speech, speed changes, color filters) or involves generating real or specific people, return no ops and set unsupportedReason to one short plain sentence saying what can't be done and why.
 explanation = ONE plain sentence describing the change.
 ${RULES}`;
 
@@ -362,6 +404,9 @@ export interface ReviseResult {
   generate: GenerateRequest | null;
   visualEdit?: VisualEditRequest | null;
   music?: MusicRequest | null;
+  // Overlays and transitions: null/undefined = unchanged.
+  overlays?: Overlay[] | null;
+  transitions?: Transition[] | null;
   explanation: string;
   ops: Op[];
   model: string;
@@ -375,11 +420,15 @@ export async function revise(input: {
   segments: Segment[];
   techniqueTitle: string;
   direction: string;
+  overlays?: Overlay[];
+  transitions?: Transition[];
 }): Promise<ReviseResult> {
   const clipsInfo = clipInfosOf(input.clips);
   const brief = `What the footage contains (from the first watch): ${JSON.stringify({ transcript: input.analysis?.transcript ?? [], moments: input.analysis?.moments ?? [] })}
 Current cut (${totalMs(input.segments)} ms, technique "${input.techniqueTitle}"), in playback order:
 ${JSON.stringify(input.segments)}
+Current overlays (text and stickers): ${JSON.stringify(input.overlays ?? [])}
+Current transitions: ${JSON.stringify(input.transitions ?? [])}
 The user now says: "${input.direction}"`;
 
   let retryNote = '';
@@ -400,9 +449,15 @@ The user now says: "${input.direction}"`;
     const ve = data?.visualEdit;
     const hasVisual = Boolean(ve && typeof ve.instruction === 'string' && ve.instruction.trim());
     const hasGenerate = Boolean(data?.generate && typeof data.generate.prompt === 'string' && data.generate.prompt.trim());
-    // Music alone: the shots stay exactly as they are.
-    if (music && !ops.length && !hasVisual && !hasGenerate) {
-      return { segments: input.segments, unsupportedReason: null, generate: null, music, explanation: String(data.explanation ?? '').trim(), ops, model, attempts, ms: totalModelMs };
+    // Overlays and transitions sit on the shots they'll end up with (after ops, if any).
+    const target = ops.length ? applyOps(input.segments, ops).segments : input.segments;
+    const ov = Array.isArray(data?.overlays) ? normalizeOverlays(data.overlays, target) : null;
+    const tr = Array.isArray(data?.transitions) ? normalizeTransitions(data.transitions, target) : null;
+    const look = { overlays: ov?.overlays ?? null, transitions: tr?.transitions ?? null };
+    const lookErrors = [...(ov?.errors ?? []), ...(tr?.errors ?? [])];
+    // Music, text, stickers or transitions alone: the shots stay exactly as they are.
+    if ((music || ov || tr) && !ops.length && !hasVisual && !hasGenerate && !lookErrors.length) {
+      return { segments: input.segments, unsupportedReason: null, generate: null, music, ...look, explanation: String(data.explanation ?? '').trim(), ops, model, attempts, ms: totalModelMs };
     }
     if (!ops.length && hasVisual) {
       const known = new Set(input.segments.map((s) => s.id));
@@ -412,7 +467,7 @@ The user now says: "${input.direction}"`;
         instruction: ve.instruction.trim().slice(0, 900),
         segmentIds: ids.length ? [...new Set<string>(ids)] : input.segments.map((s) => s.id),
       };
-      return { segments: null, unsupportedReason: null, generate: null, visualEdit, music, explanation: String(data.explanation ?? '').trim(), ops, model, attempts, ms: totalModelMs };
+      return { segments: null, unsupportedReason: null, generate: null, visualEdit, music, ...look, explanation: String(data.explanation ?? '').trim(), ops, model, attempts, ms: totalModelMs };
     }
     const gen = data?.generate;
     if (!ops.length && gen && typeof gen.prompt === 'string' && gen.prompt.trim()) {
@@ -423,16 +478,16 @@ The user now says: "${input.direction}"`;
         atIndex: Number.isFinite(Number(gen.atIndex)) ? Math.round(Number(gen.atIndex)) : input.segments.length,
         audio: gen.audio === 'mute' ? 'mute' : 'keep',
       };
-      return { segments: null, unsupportedReason: null, generate, music, explanation: String(data.explanation ?? '').trim(), ops, model, attempts, ms: totalModelMs };
+      return { segments: null, unsupportedReason: null, generate, music, ...look, explanation: String(data.explanation ?? '').trim(), ops, model, attempts, ms: totalModelMs };
     }
-    if (unsupported && !ops.length) {
+    if (unsupported && !ops.length && !lookErrors.length) {
       return { segments: null, unsupportedReason: unsupported, generate: null, explanation: String(data.explanation ?? ''), ops, model, attempts, ms: totalModelMs };
     }
     const applied = applyOps(input.segments, ops);
-    const errors = [...applied.errors, ...validateSegments(applied.segments, clipsInfo)];
-    if (!ops.length) errors.push('no operations returned; either return ops, set generate, or set unsupportedReason');
+    const errors = [...applied.errors, ...validateSegments(applied.segments, clipsInfo), ...lookErrors];
+    if (!ops.length && !lookErrors.length) errors.push('no operations returned; either return ops, set generate, overlays or transitions, or set unsupportedReason');
     if (!errors.length) {
-      return { segments: applied.segments, unsupportedReason: null, generate: null, music, explanation: String(data.explanation ?? '').trim(), ops, model, attempts, ms: totalModelMs };
+      return { segments: applied.segments, unsupportedReason: null, generate: null, music, ...look, explanation: String(data.explanation ?? '').trim(), ops, model, attempts, ms: totalModelMs };
     }
     lastErrors = errors;
     log('gemini', { what: 'revise', attempt: attempts, invalid: errors.join('; ').slice(0, 400) }, 'warn');

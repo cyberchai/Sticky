@@ -428,6 +428,8 @@ async function why(chatId: string, project: any): Promise<void> {
     direction: v.direction,
     versionNo: v.version_no,
     music: v.music,
+    overlays: v.overlays,
+    transitions: v.transitions,
   }));
 }
 

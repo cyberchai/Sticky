@@ -42,6 +42,8 @@ const HANDLE = /^[a-f0-9]{12}$/;
 const COLORS = ['#E4572E', '#2E86AB', '#7B2CBF', '#1F7A4D', '#D1495B', '#F18F01', '#3D5A80', '#C2185B'];
 /** Words that make a spoken command depend on where the speaker is pointing. */
 const DEICTIC = /\b(here|there|this|that|these|those|right where)\b/i;
+/** Text, stickers and transitions go by the pointed x/y and shot alone, so they skip the scene description. */
+const LOOK = /\b(text|title|caption|words?|label|name|sticker|emoji|transition|crossfade|fade|slide|wipe|dissolve)\b/i;
 /** "note for Sam: …", "add a note …", "tag …": a note, not an edit. web/live.html uses the same pattern. */
 const NOTE = /^(?:(?:add|leave|make|take|drop)\s+(?:a\s+)?)?note\b[\s,.:;-]*|^tag\b[\s,.:;-]*/i;
 
@@ -324,6 +326,7 @@ async function handleSay(project: any, person: Person, peer: string, text: strin
       return void reply(project.id, whyThisCut({
         segments: latest.segments, technique: latest.technique, analysis: project.analysis,
         explanation: latest.explanation, direction: latest.direction, versionNo: latest.version_no, music: latest.music,
+        overlays: latest.overlays, transitions: latest.transitions,
       }));
     case 'keep':
       await q('UPDATE sticky.versions SET kept = true WHERE id = $1', [latest.id]);
@@ -346,11 +349,13 @@ async function queueEdit(project: any, person: Person, peer: string, text: strin
       : latest;
     const sameCut = viewed.version_no === latest.version_no;
     const seg = sameCut ? segmentAt(latest.segments, anchor.atMs) : null;
-    await emit(project.id, 'grounding', { said: text, handle: person.handle }, { from: peer });
-    try {
-      where = await ground(viewed.out_key, viewed.duration_ms, anchor.atMs, anchor.x, anchor.y, text);
-    } catch (err) {
-      log('live', { project: project.id, grounding: 'failed', error: errMsg(err).slice(0, 200) }, 'warn');
+    if (!LOOK.test(text)) {
+      await emit(project.id, 'grounding', { said: text, handle: person.handle }, { from: peer });
+      try {
+        where = await ground(viewed.out_key, viewed.duration_ms, anchor.atMs, anchor.x, anchor.y, text);
+      } catch (err) {
+        log('live', { project: project.id, grounding: 'failed', error: errMsg(err).slice(0, 200) }, 'warn');
+      }
     }
     const spot = where ? `the spot is ${where}, ` : '';
     const cut = sameCut ? 'the current cut' : `v${viewed.version_no}`;

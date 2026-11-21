@@ -28,6 +28,14 @@ cloudflared tunnel --url http://localhost:8787   # then point the push subscript
 Local Postgres without touching the system: `initdb -D .data/pg -U sticky --auth=trust && pg_ctl -D .data/pg -o "-p 5433 -k /tmp" start && createdb -h localhost -p 5433 -U sticky sticky`, then `DATABASE_URL=postgres://sticky@localhost:5433/sticky`.
 `./buildandrundev` does all of that (local Postgres, local disk, worker on) and opens the page; add `--gcs` for Omni edits.
 
+## Text, stickers, transitions
+
+Ask in any channel ("put 'Animalliyah' on it", "a 🔥 on the last shot", "crossfade between every shot").
+Revisions return overlays (text in four styles, emoji stickers from Noto Emoji, fade/pop/slide entrances) and
+transitions (ffmpeg xfade presets: crossfade, dissolve, dip to black/white, slides, wipe, zoom, circle, whip).
+Both are keyed by shot id and carry into later versions. Text is drawn with sharp/Pango and the bundled Poppins
+(`assets/fonts`, OFL) and burned in with ffmpeg's overlay filter, so it works without `drawtext`.
+
 ## Live sessions
 
 "Edit live with your team" on a reel (or the link in the first texted cut) opens `/live/<token>`: everyone joins
