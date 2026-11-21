@@ -54,6 +54,9 @@ const pct = (n: number) => `${Math.round(n * 100)}%`;
 const colorOf = (peer: string) => COLORS[parseInt(peer.slice(0, 6), 16) % COLORS.length];
 const cleanName = (raw: unknown) => String(raw ?? '').replace(/\s+/g, ' ').trim().slice(0, 40);
 
+/** A tab that hasn't sent /beat for this long has left (closed, reloaded, lost its network). */
+const PRESENCE_TTL_S = 20;
+
 const STUN = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
 let turnCache: { servers: unknown[]; until: number } | null = null;
 
@@ -228,10 +231,10 @@ function startSweeper(): void {
   if (sweeping) return;
   sweeping = true;
   setInterval(() => {
-    void q(`DELETE FROM sticky.live_presence WHERE last_seen < now() - interval '30 seconds' RETURNING project_id, peer_id`)
+    void q(`DELETE FROM sticky.live_presence WHERE last_seen < now() - interval '${PRESENCE_TTL_S} seconds' RETURNING project_id, peer_id`)
       .then((gone) => Promise.all(gone.map((g: any) => emit(g.project_id, 'leave', { peer: g.peer_id }, { from: g.peer_id }))))
       .catch((err) => log('live', { sweep: 'failed', error: errMsg(err) }, 'warn'));
-  }, 10_000).unref();
+  }, 5_000).unref();
   setInterval(() => {
     void q(`DELETE FROM sticky.live_events WHERE created_at < now() - interval '6 hours'`).catch(() => {});
   }, 10 * 60_000).unref();
@@ -532,7 +535,7 @@ async function liveState(project: any, role: 'host' | 'guest'): Promise<unknown>
        FROM sticky.jobs WHERE project_id = $1 ORDER BY created_at DESC LIMIT 40`, [project.id]),
     q(`SELECT * FROM sticky.notes WHERE project_id = $1 ORDER BY id`, [project.id]),
     networkOf(project.chat_id),
-    q(`SELECT peer_id, handle, name, role, color FROM sticky.live_presence WHERE project_id = $1 AND last_seen > now() - interval '30 seconds' ORDER BY joined_at`, [project.id]),
+    q(`SELECT peer_id, handle, name, role, color FROM sticky.live_presence WHERE project_id = $1 AND last_seen > now() - interval '${PRESENCE_TTL_S} seconds' ORDER BY joined_at`, [project.id]),
     q(`SELECT name, generated FROM sticky.sources WHERE project_id = $1 ORDER BY clip_id`, [project.id]),
   ]);
   const title = (sources.find((s: any) => !s.generated)?.name ?? 'Your reel').replace(/\.[^.]+$/, '');
@@ -603,7 +606,7 @@ async function stream(req: http.IncomingMessage, res: http.ServerResponse, url: 
     [peer, project.id, person.handle, person.name, role, color],
   );
   const others = await q(
-    `SELECT peer_id, handle, name, role, color FROM sticky.live_presence WHERE project_id = $1 AND peer_id <> $2 AND last_seen > now() - interval '30 seconds'`,
+    `SELECT peer_id, handle, name, role, color FROM sticky.live_presence WHERE project_id = $1 AND peer_id <> $2 AND last_seen > now() - interval '${PRESENCE_TTL_S} seconds'`,
     [project.id, peer],
   );
   const you = { peer, handle: person.handle, name: person.name, role, color };
@@ -624,17 +627,16 @@ async function stream(req: http.IncomingMessage, res: http.ServerResponse, url: 
     for (const m of missed) write(sub, m);
   }
 
-  const beat = setInterval(() => {
-    res.write(': ping\n\n');
-    void q(`UPDATE sticky.live_presence SET last_seen = now() WHERE peer_id = $1`, [peer]).catch(() => {});
-  }, 10_000);
+  // Keeps proxies from idling the stream out. Presence is NOT refreshed here: behind Cloud Run's front end a
+  // closed tab's stream can look alive for a long time, so only the tab's own /beat keeps it in the room.
+  const beat = setInterval(() => res.write(': ping\n\n'), 10_000);
   req.on('close', () => {
     clearInterval(beat);
     const set = subs.get(project.id);
     set?.delete(sub);
     if (set && !set.size) subs.delete(project.id);
     // Age the row so the sweeper drops a closed tab within ~15s; a reconnect refreshes it first.
-    void q(`UPDATE sticky.live_presence SET last_seen = now() - interval '25 seconds' WHERE peer_id = $1`, [peer]).catch(() => {});
+    void q(`UPDATE sticky.live_presence SET last_seen = now() - interval '${PRESENCE_TTL_S} seconds' WHERE peer_id = $1`, [peer]).catch(() => {});
   });
 }
 
@@ -661,7 +663,7 @@ export async function handleLive(req: http.IncomingMessage, res: http.ServerResp
     return true;
   }
 
-  const m = /^\/live-api\/([a-f0-9]{32})\/(state|stream|join|leave|signal|say|note|contact|invite|phone|finish|diag)$/.exec(p);
+  const m = /^\/live-api\/([a-f0-9]{32})\/(state|stream|join|leave|signal|say|note|contact|invite|phone|finish|diag|beat)$/.exec(p);
   if (!m) return false;
   const [, token, action] = m;
   const project = await projectByToken(token);
@@ -699,6 +701,12 @@ export async function handleLive(req: http.IncomingMessage, res: http.ServerResp
       const pick = (v: unknown) => String(v ?? '').replace(/[^\w ,:.-]/g, '').slice(0, 120);
       log('live', { project: project.id, diag: pick(body.state), from: pick(body.from), to: pick(body.to), local: pick(body.local), remote: pick(body.remote), pair: pick(body.pair), tries: Number(body.tries) || undefined });
       send(res, 200, { ok: true });
+      return true;
+    }
+    // Each open tab says it's still here every few seconds; `gone` tells a tab that was swept to rejoin.
+    case 'beat': {
+      const alive = await one(`UPDATE sticky.live_presence SET last_seen = now() WHERE peer_id = $1 AND project_id = $2 RETURNING 1 AS ok`, [String(body.peer ?? ''), project.id]);
+      send(res, 200, { ok: true, gone: !alive });
       return true;
     }
     case 'leave': {

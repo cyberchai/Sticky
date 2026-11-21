@@ -437,10 +437,13 @@
     // Server-sent events read with fetch, not EventSource, so the host key and person id ride in headers
     // instead of the URL. Reconnects resume from the last event id (the server replays what was missed).
     let lastEventId = 0;
+    let streamCtl = null;
     async function connect() {
       for (;;) {
         try {
+          streamCtl = new AbortController();
           const res = await fetch(api(`/stream?peer=${peerId}`), {
+            signal: streamCtl.signal,
             cache: 'no-store',
             headers: { ...headers(), 'X-Sticky-Person': personId, ...(lastEventId ? { 'Last-Event-ID': String(lastEventId) } : {}) },
           });
@@ -472,6 +475,20 @@
       }
     }
     addEventListener('pagehide', () => { navigator.sendBeacon?.(api('/leave'), JSON.stringify({ peer: peerId })); });
+
+    // Presence is this tab saying "still here" every few seconds: a closed or reloaded tab simply stops, and
+    // the room drops it within ~20 s. If the server already dropped us (a network blip), rejoin at once.
+    let beating = false;
+    function startBeat() {
+      if (beating) return;
+      beating = true;
+      const beat = async () => {
+        const r = await post('/beat', { peer: peerId });
+        if (r.ok && r.body.gone) streamCtl?.abort();
+      };
+      void beat();
+      setInterval(beat, 7000);
+    }
     const signal = (to, data) => post('/signal', { from: peerId, to, data });
 
     function onEvent(m) {
@@ -481,6 +498,7 @@
           // Also sent on every reconnect: only call peers we don't already have, or live calls would reset.
           const first = !me;
           me = p.you;
+          startBeat(); // only now does the server have this tab in the room
           $('meTile').style.setProperty('--c', me.color);
           $('roleTag').textContent = me.role === 'host' ? 'You’re the host' : '';
           for (const o of p.others) {
@@ -488,7 +506,7 @@
             addPeer(o);
             if (!known && peerId < o.peer) call(o.peer);
           }
-          if (first) feed({ kind: 'sys', text: p.others.length ? `You joined ${p.others.map((o) => o.name).join(', ')}.` : 'You’re the first one here. Invite people with the Invite button.' });
+          if (first) feed({ kind: 'sys', text: p.others.length ? `You joined ${[...new Set(p.others.map((o) => o.name))].join(', ')}.` : 'You’re the first one here. Invite people with the Invite button.' });
           break;
         }
         case 'join':
