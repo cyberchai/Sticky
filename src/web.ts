@@ -18,6 +18,7 @@ import { CONTACT_LIMIT, addContacts, joinUrl, listContacts, phonesIn, removeCont
 import { q } from './db.js';
 import { acceptEvent } from './inbound.js';
 import { UPLOAD_SCHEME } from './intake.js';
+import { CODE, cleanName, createInvite, inviteExists, inviteStatus, inviteUrl, joinText, signUp } from './invites.js';
 import { errMsg, log } from './log.js';
 import { pollView } from './polls.js';
 import { cachePath, ensureDir, putFile } from './store.js';
@@ -41,14 +42,35 @@ const ID = /^[a-f0-9]{32}$/;
 // Joining the free line: add a number to the 20-contact list, hand back the one-tap first text.
 // ---------------------------------------------------------------------------------------------
 
-const joinHits = new Map<string, number[]>();
-function joinAllowed(ip: string): boolean {
-  const now = Date.now();
-  const recent = (joinHits.get(ip) ?? []).filter((t) => now - t < 10 * 60_000);
-  if (recent.length >= 6) return false;
-  recent.push(now);
-  joinHits.set(ip, recent);
-  return true;
+/** At most `max` tries per IP in 10 minutes. */
+function rateLimiter(max: number): (ip: string) => boolean {
+  const hits = new Map<string, number[]>();
+  return (ip) => {
+    const now = Date.now();
+    const recent = (hits.get(ip) ?? []).filter((t) => now - t < 10 * 60_000);
+    if (recent.length >= max) return false;
+    recent.push(now);
+    hits.set(ip, recent);
+    return true;
+  };
+}
+const joinAllowed = rateLimiter(6);
+const groupAllowed = rateLimiter(10);
+const BAD_GROUP_LINK = 'That group link doesn’t work. Ask for a new one.';
+
+/**
+ * The RIGHT-most X-Forwarded-For entry is the one Cloud Run's front end appends; the first is whatever
+ * the client sent, so keying on it would let anyone fill the 20 slots by faking it.
+ */
+function clientIp(req: http.IncomingMessage): string {
+  const forwarded = String(req.headers['x-forwarded-for'] ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  return forwarded[forwarded.length - 1] ?? req.socket.remoteAddress ?? '';
+}
+
+async function qrPng(res: http.ServerResponse, link: string): Promise<void> {
+  const png = await QRCode.toBuffer(link, { width: 640, margin: 1, color: { dark: '#361118', light: '#FDFB04' } });
+  res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=3600' });
+  res.end(png);
 }
 
 function isAdmin(req: http.IncomingMessage, url: URL): boolean {
@@ -62,10 +84,25 @@ function isAdmin(req: http.IncomingMessage, url: URL): boolean {
 
 async function handleJoin(req: http.IncomingMessage, res: http.ServerResponse, url: URL): Promise<boolean> {
   const p = url.pathname;
-  if (p === '/join/qr.png' && req.method === 'GET') {
-    const png = await QRCode.toBuffer(joinUrl(), { width: 640, margin: 1, color: { dark: '#361118', light: '#FDFB04' } });
-    res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=3600' });
-    res.end(png);
+  if (p === '/join/qr.png' && req.method === 'GET') { await qrPng(res, joinUrl()); return true; }
+  // Scan-to-join group chat (invites.ts): the same page, which reads the code from its path.
+  const groupPage = /^\/join\/g\/([A-HJ-NP-Z2-9]{8})(\/qr\.png)?$/.exec(p);
+  if (groupPage && (req.method === 'GET' || req.method === 'HEAD')) {
+    if (groupPage[2]) await qrPng(res, inviteUrl(groupPage[1]));
+    else serveStatic(req, res, STATIC['/join']);
+    return true;
+  }
+  if (p === '/web/groups' && req.method === 'POST') {
+    if (!groupAllowed(clientIp(req))) { send(res, 429, { ok: false, error: 'Too many new groups. Give it a few minutes.' }); return true; }
+    const body = JSON.parse((await readRaw(req, 4 * 1024)).toString('utf8') || '{}');
+    send(res, 200, { ok: true, ...await createInvite(cleanName(body.name)) });
+    return true;
+  }
+  const groupStatus = /^\/web\/groups\/([A-HJ-NP-Z2-9]{8})$/.exec(p);
+  if (groupStatus && req.method === 'GET') {
+    const status = await inviteStatus(groupStatus[1]);
+    if (!status) send(res, 404, { ok: false, error: BAD_GROUP_LINK });
+    else send(res, 200, { ok: true, ...status });
     return true;
   }
   if (p === '/web/join' && req.method === 'GET') {
@@ -74,18 +111,19 @@ async function handleJoin(req: http.IncomingMessage, res: http.ServerResponse, u
     return true;
   }
   if (p === '/web/join' && req.method === 'POST') {
-    // The RIGHT-most X-Forwarded-For entry is the one Cloud Run's front end appends; the first is
-    // whatever the client sent, so keying on it would let anyone fill the 20 slots by faking it.
-    const forwarded = String(req.headers['x-forwarded-for'] ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-    const ip = forwarded[forwarded.length - 1] ?? req.socket.remoteAddress ?? '';
-    if (!joinAllowed(ip)) { send(res, 429, { ok: false, error: 'Too many tries. Give it a few minutes.' }); return true; }
+    if (!joinAllowed(clientIp(req))) { send(res, 429, { ok: false, error: 'Too many tries. Give it a few minutes.' }); return true; }
     const body = JSON.parse((await readRaw(req, 4 * 1024)).toString('utf8') || '{}');
     const phone = toE164(String(body.phone ?? ''));
     if (!phone) { send(res, 400, { ok: false, error: 'That doesn’t look like a phone number.' }); return true; }
+    const group = body.group == null ? null : String(body.group);
+    if (group !== null && !(CODE.test(group) && await inviteExists(group))) { send(res, 404, { ok: false, error: BAD_GROUP_LINK }); return true; }
     const r = await addContacts([phone]);
     if (r.full.length) { send(res, 409, { ok: false, error: `Sticky's free line is full (${CONTACT_LIMIT} people).`, used: r.used }); return true; }
     if (r.failed.length) { send(res, 502, { ok: false, error: 'Linq didn’t accept that number. Try again?' }); return true; }
-    send(res, 200, { ok: true, status: r.added.length ? 'added' : 'already', line: config.line, sms: textStickyLink(), used: r.used, limit: CONTACT_LIMIT });
+    // In a group, the first text says which one; Sticky adds them to its chat when that text arrives.
+    if (group) await signUp(group, phone);
+    const sms = textStickyLink(group ? joinText(group) : undefined);
+    send(res, 200, { ok: true, status: r.added.length ? 'added' : 'already', line: config.line, sms, used: r.used, limit: CONTACT_LIMIT });
     return true;
   }
   if (p.startsWith('/admin/contacts')) {
@@ -225,20 +263,21 @@ async function threadState(thread: string): Promise<unknown> {
   };
 }
 
+function serveStatic(req: http.IncomingMessage, res: http.ServerResponse, asset: { file: string; type: string; cache: string }): void {
+  const file = path.join(WEB_DIR, asset.file);
+  if (!fs.existsSync(file)) { res.writeHead(404); res.end(); return; }
+  res.writeHead(200, { 'Content-Type': asset.type, 'Cache-Control': asset.cache, 'X-Content-Type-Options': 'nosniff' });
+  if (req.method === 'HEAD') res.end();
+  else fs.createReadStream(file).pipe(res);
+}
+
 /** Returns true when the request was a web-channel route. */
 export async function handleWeb(req: http.IncomingMessage, res: http.ServerResponse, url: URL): Promise<boolean> {
   const p = url.pathname;
   if (await handleJoin(req, res, url)) return true;
 
   const asset = STATIC[p];
-  if (asset && (req.method === 'GET' || req.method === 'HEAD')) {
-    const file = path.join(WEB_DIR, asset.file);
-    if (!fs.existsSync(file)) { res.writeHead(404); res.end(); return true; }
-    res.writeHead(200, { 'Content-Type': asset.type, 'Cache-Control': asset.cache, 'X-Content-Type-Options': 'nosniff' });
-    if (req.method === 'HEAD') res.end();
-    else fs.createReadStream(file).pipe(res);
-    return true;
-  }
+  if (asset && (req.method === 'GET' || req.method === 'HEAD')) { serveStatic(req, res, asset); return true; }
 
   // The thread id is the visitor's only credential, so it travels in a header and never in a URL
   // (URLs land in request logs, browser history and Referer headers).

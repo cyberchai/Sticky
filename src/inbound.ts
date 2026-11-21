@@ -14,6 +14,7 @@ import { errMsg, last4, log } from './log.js';
 import { applyVote, choicesStillNeeded, joinNotes, standingChoices } from './polls.js';
 import { transcribeVoice } from './voice.js';
 import { CONTACT_LIMIT, addContacts, joinUrl, phonesIn } from './contacts.js';
+import { joinFromText } from './invites.js';
 import { linqCall, openChat } from './linq.js';
 
 export interface VideoPart { partId: string; url: string; mime: string; sizeBytes: number | null; name: string | null }
@@ -304,6 +305,11 @@ async function handleText(input: ParsedLinq, receivedAt: Date): Promise<void> {
   const command = text.trim().toUpperCase().replace(/[.!\s]+$/g, '');
 
   if (!text) { if (p.otherMedia && !group) await reply(chatId, COPY.notVideo); return; }
+  // "Join group K7Q2MXRP", prefilled by the scan-to-join page: put them in that group chat.
+  if (!group && p.from?.startsWith('+')) {
+    const joined = await joinFromText(p.from, text).catch((err) => { log('invite', { chat: chatId, failed: errMsg(err) }, 'error'); return null; });
+    if (joined) return void (await reply(chatId, joined));
+  }
   // "add 347-555-0100, 917…" (typed or spoken) puts people on the free line's list.
   if (/^\s*(sticky[,:]?\s*)?(please\s+)?add\b/i.test(text) && phonesIn(text).length) return addPeople(chatId, phonesIn(text));
   if (group) return handleGroupText(p, project, receivedAt, voice);

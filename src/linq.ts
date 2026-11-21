@@ -126,11 +126,26 @@ export async function ensureContactCard(phone: string, firstName: string, imageU
     : linqCall('POST', '/contact_card', body, 20_000);
 }
 
-/** Open a chat from our line to a phone (scripts/linq-check only). */
-export async function openChat(from: string, to: string, parts: Part[]): Promise<SendResult> {
-  const r = await linqCall('POST', '/chats', { from, to: [to], message: { parts } }, 20_000);
+/**
+ * Open a chat from our line: one phone is a 1:1, two or more start a group. Linq rejects a link in a new
+ * chat's first message, and returns the existing chat when an unnamed one has exactly these people.
+ */
+export async function openChat(from: string, to: string | string[], parts: Part[]): Promise<SendResult> {
+  const r = await linqCall('POST', '/chats', { from, to: Array.isArray(to) ? to : [to], message: { parts } }, 20_000);
   if (!ok(r)) throw new Error(`open chat failed: HTTP ${r.status} ${JSON.stringify(r.body).slice(0, 200)}`);
   return sendResult(r);
+}
+
+/** Add someone to an iMessage group (Linq: the group already has 3+ members, all on iMessage). */
+export async function addParticipant(chatId: string, handle: string): Promise<void> {
+  const r = await linqCall('POST', `/chats/${encodeURIComponent(chatId)}/participants`, { handle }, 20_000);
+  if (!ok(r)) throw new Error(`add participant failed: HTTP ${r.status} ${JSON.stringify(r.body).slice(0, 200)}`);
+}
+
+/** A group's name in Messages. Naming also stops Linq reusing this chat for a later group of the same people. */
+export async function nameChat(chatId: string, displayName: string): Promise<void> {
+  const r = await linqCall('PUT', `/chats/${encodeURIComponent(chatId)}`, { display_name: displayName });
+  if (!ok(r)) throw new Error(`rename failed: HTTP ${r.status} ${JSON.stringify(r.body).slice(0, 200)}`);
 }
 
 export async function sendText(chatId: string, text: string): Promise<SendResult> {

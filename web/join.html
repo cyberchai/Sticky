@@ -21,20 +21,36 @@
     }
     a { color: inherit; }
     button { font: inherit; cursor: pointer; border: 0; }
+    [hidden] { display: none !important; }
     :focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; border-radius: 8px; }
     .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
     main { height: 100%; display: grid; justify-items: center; padding: clamp(16px, 4vh, 44px) 16px; }
     .mark img { display: block; height: clamp(26px, 4.5vh, 44px); width: auto; }
-    .hint { font-size: clamp(13px, 1.8vh, 17px); font-weight: 500; color: var(--ink-2); }
+    .hint { font-size: clamp(13px, 1.8vh, 17px); font-weight: 500; color: var(--ink-2); text-align: center; }
 
     /* Laptop: the QR is the page. Its light colour is the page colour, so the page is its quiet zone. */
     .desk { grid-template-rows: auto minmax(0, 1fr) auto; gap: clamp(12px, 3vh, 32px); }
     .fit { width: 100%; min-height: 0; container-type: size; display: grid; place-items: center; }
     .qr { display: block; width: min(100cqw, 100cqh); height: auto; aspect-ratio: 1; image-rendering: pixelated; }
+    .foot { display: grid; justify-items: center; gap: clamp(8px, 1.4vh, 14px); }
+    .title { font-size: clamp(18px, 3vh, 30px); font-weight: 700; text-align: center; overflow-wrap: anywhere; }
+    .count { font-size: clamp(13px, 1.8vh, 17px); font-weight: 700; font-variant-numeric: tabular-nums; min-height: 1.4em; }
+    .pill {
+      display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: 999px;
+      border: 2px solid var(--ink); background: transparent; color: var(--ink); font-weight: 700; font-size: 14px;
+      transition: transform .35s var(--taffy), background-color .15s, color .15s;
+    }
+    .pill:hover { background: var(--ink); color: var(--yellow); }
+    .pill:active { transform: scale(.96); }
+    .pill.solid { background: var(--ink); color: var(--yellow); }
+    .pill[disabled] { opacity: .5; pointer-events: none; }
+    .newgroup { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; width: auto; }
+    .newgroup input { width: min(260px, 70vw); padding: 9px 14px; font-size: 15px; border-radius: 999px; text-align: left; }
 
     /* Phone: you can't scan your own screen, so it's just the number. */
     .phone { display: none; align-content: center; gap: 22px; }
     .phone .mark img { height: 64px; }
+    .lead { font-size: 20px; font-weight: 700; text-align: center; max-width: 340px; overflow-wrap: anywhere; }
     form { display: grid; gap: 10px; width: min(340px, 100%); }
     input {
       width: 100%; border: 2px solid var(--ink); border-radius: 16px; padding: 16px 18px; background: #fff;
@@ -54,6 +70,7 @@
     .is-done form { display: none; }
     .is-done .done { display: grid; }
     @keyframes pop { from { transform: scale(.94); opacity: 0 } }
+    @media (prefers-reduced-motion: reduce) { .done { animation: none; } .btn, .pill { transition: none; } }
 
     @media (hover: none), (pointer: coarse) {
       .desk { display: none; }
@@ -66,19 +83,30 @@
 
   <main class="desk">
     <a class="mark" href="/" aria-label="sticky home"><img src="/assets/sticky-mark.svg" alt="sticky" width="66" height="30" /></a>
-    <div class="fit"><img class="qr" src="/join/qr.png" alt="QR code: open this page on your phone" width="640" height="640" /></div>
-    <p class="hint">Scan with your phone</p>
+    <div class="fit"><img class="qr" id="qr" alt="QR code: open this page on your phone" width="640" height="640" /></div>
+    <div class="foot">
+      <p class="title" id="title" hidden></p>
+      <p class="hint" id="hint">Scan with your phone</p>
+      <p class="count" id="count" role="status" aria-live="polite" hidden></p>
+      <button class="pill" id="newGroup" type="button">+ New group chat</button>
+      <form class="newgroup" id="groupForm" hidden>
+        <input id="groupName" maxlength="40" autocomplete="off" placeholder="Name it (optional)" aria-label="Group chat name" />
+        <button class="pill solid" id="groupGo" type="submit">Create</button>
+      </form>
+      <p class="msg" id="deskMsg" role="status" aria-live="polite"></p>
+    </div>
   </main>
 
   <main class="phone" id="phone">
     <a class="mark" href="/" aria-label="sticky home"><img src="/assets/sticky-mark.svg" alt="sticky" width="140" height="64" /></a>
+    <p class="lead" id="lead" hidden></p>
     <form id="form" autocomplete="on">
       <input id="num" type="tel" inputmode="tel" autocomplete="tel" placeholder="Your number" aria-label="Your phone number" required />
       <button class="btn" id="go" type="submit">Add me</button>
     </form>
     <div class="done">
       <a class="btn" id="smsBtn" href="#">Text Sticky</a>
-      <p class="hint">Then send it any clip.</p>
+      <p class="hint" id="doneHint">Then send it any clip.</p>
     </div>
     <p class="msg" id="msg" role="status" aria-live="polite"></p>
   </main>
@@ -86,17 +114,93 @@
   <script>
   (() => {
     const $ = (id) => document.getElementById(id);
+    const desk = !matchMedia('(hover: none), (pointer: coarse)').matches;
+    let code = (/^\/join\/g\/([A-HJ-NP-Z2-9]{8})\/?$/.exec(location.pathname) || [])[1] || null;
+    let pollTimer = null;
+
+    // ---- Group mode: the QR, the phone's labels, and (on the laptop) a live count. ----
+    function countLine(g) {
+      let head = 'Nobody in yet';
+      if (g.started) head = `${g.inChat} in the group chat`;
+      else if (g.texted) head = `${g.texted} in · the group chat starts when the second person joins`;
+      const onTheWay = g.signedUp - g.texted;
+      return onTheWay > 0 ? `${head} · ${onTheWay} on the way` : head;
+    }
+    async function refresh() {
+      clearTimeout(pollTimer);
+      if (!code) return;
+      try {
+        const res = await fetch(`/web/groups/${code}`, { cache: 'no-store' });
+        const g = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(g.error || 'That group link doesn’t work.');
+        showGroup(g.name);
+        $('count').hidden = false;
+        $('count').textContent = countLine(g);
+      } catch (err) {
+        $('qr').hidden = true; $('title').hidden = true; $('count').hidden = true;
+        $('hint').textContent = err.message;
+        $('lead').hidden = true; $('go').disabled = true;
+        $('msg').className = 'msg err'; $('msg').textContent = err.message;
+        return;
+      }
+      if (desk) pollTimer = setTimeout(refresh, document.hidden ? 15000 : 4000);
+    }
+    function showGroup(name) {
+      document.title = `Join ${name} — sticky`;
+      $('qr').hidden = false;
+      $('qr').src = `/join/g/${code}/qr.png`;
+      $('qr').alt = `QR code: join the ${name} group chat`;
+      $('title').hidden = false; $('title').textContent = name;
+      $('hint').textContent = 'Scan to join the group chat';
+      $('lead').hidden = false; $('lead').textContent = `Join “${name}”`;
+      $('go').textContent = 'Join the group chat';
+      $('smsBtn').textContent = 'Send the join text';
+      $('doneHint').textContent = 'Send it and you’re in the group chat.';
+    }
+    if (code) refresh(); else $('qr').src = '/join/qr.png';
+    document.addEventListener('visibilitychange', () => { if (!document.hidden && code && desk) refresh(); });
+
+    // ---- Laptop: start a new group chat. ----
+    $('newGroup').addEventListener('click', () => {
+      $('newGroup').hidden = true; $('groupForm').hidden = false; $('groupName').focus();
+    });
+    $('groupName').addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { $('groupForm').hidden = true; $('newGroup').hidden = false; }
+    });
+    $('groupForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      $('groupGo').disabled = true; $('deskMsg').className = 'msg'; $('deskMsg').textContent = '';
+      try {
+        const res = await fetch('/web/groups', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: $('groupName').value }) });
+        const g = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(g.error || 'Couldn’t start a group. Try again?');
+        code = g.code;
+        history.pushState(null, '', `/join/g/${code}`);
+        $('groupName').value = ''; $('groupForm').hidden = true; $('newGroup').hidden = false;
+        showGroup(g.name);
+        refresh();
+      } catch (err) {
+        $('deskMsg').className = 'msg err'; $('deskMsg').textContent = err.message;
+      } finally {
+        $('groupGo').disabled = false;
+      }
+    });
+    addEventListener('popstate', () => location.reload());
+
+    // ---- Phone: add the number, then the first text (in a group, it says which one). ----
     $('form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const phone = $('num').value.trim();
       if (!phone) return;
       $('go').disabled = true; $('msg').className = 'msg'; $('msg').textContent = '';
       try {
-        const res = await fetch('/web/join', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone }) });
+        const res = await fetch('/web/join', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(code ? { phone, group: code } : { phone }) });
         const body = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(body.error || 'Something went wrong.');
         if (body.sms) $('smsBtn').href = body.sms;
         $('phone').classList.add('is-done');
+        // Straight into Messages with the text ready; the button stays for a browser that blocks this.
+        if (code && body.sms) location.href = body.sms;
       } catch (err) {
         $('msg').className = 'msg err'; $('msg').textContent = err.message;
       } finally {

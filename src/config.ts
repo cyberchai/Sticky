@@ -95,6 +95,11 @@ export const COPY = {
   groupNothingNew: 'Everything picked is already in the cut. Text a change or vote, then say “go ahead”.',
   groupTooMany: `I can combine up to ${6} clips in a group reel. I kept the first six.`,
   groupStop: "To stop me in this group, remove me from the chat. I'll only answer messages meant for me.",
+  /** Scan-to-join (invites.ts): the one-on-one answer to "Join group <code>". */
+  groupJoinWaiting: (name: string) => `You're in “${name}”. I'll start the group chat as soon as one more person joins.`,
+  groupJoined: (name: string) => `You're in “${name}”. Look for the group chat in Messages.`,
+  groupJoinAlready: (name: string) => `You're already in “${name}”. Look for the group chat in Messages.`,
+  groupJoinFailed: (joinText: string) => `I couldn't add you to the group chat just now. Text “${joinText}” again in a minute.`,
   heard: (text: string) => `Heard: “${text}”`,
   addedPeople: (r: { added: string[]; already: string[]; full: string[]; used: number; limit: number; link: string }) => [
     r.added.length ? `Added ${r.added.join(', ')}.` : '',
