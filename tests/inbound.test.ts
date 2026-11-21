@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { parseLinq } from '../src/inbound.js';
+import { isGoAhead, parseLinq } from '../src/inbound.js';
 
 const msg = (chat: Record<string, unknown>, parts: unknown[], sender = '+13475550100') => ({
   event_type: 'message.received',
@@ -37,4 +37,13 @@ test('video plus caption in a group is still footage with direction', () => {
 test('our own outbound messages are marked fromMe (never answered)', () => {
   const p = parseLinq({ event_type: 'message.received', data: { id: 'x', direction: 'outbound', chat: { id: 'c' }, parts: [{ type: 'text', value: 'hi' }] } });
   assert.equal(p.fromMe, true);
+});
+
+test('group go-ahead: only a bare go-ahead releases held clips; anything with a change is direction', () => {
+  for (const t of ['go ahead', 'Combine those.', 'Go!', 'ok sticky do it', 'use both', "we're ready!", 'Sticky, combine them', 'put them together 🔥', "that's all", 'merge our clips']) {
+    assert.equal(isGoAhead(t), true, t);
+  }
+  for (const t of ['make it 8 seconds', 'go home lol', 'go ahead but open on the dog', 'going to the store', 'cut it to 8 seconds', 'start over', "I'm ready to eat"]) {
+    assert.equal(isGoAhead(t), false, t);
+  }
 });

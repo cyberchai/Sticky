@@ -10,13 +10,14 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import { say } from './channel.js';
-import { COPY, LIMITS, config, today } from './config.js';
+import { COPY, LIMITS, config, plural, today } from './config.js';
 import { one, q, tx } from './db.js';
 import { deliverVersion } from './deliver.js';
 import { applyOps, totalMs, validateSegments, type Segment } from './edl.js';
 import { EditValidationError, planV1, revise, type ClipForModel, type GenerateRequest, type MusicRequest, type VisualEditRequest } from './gemini.js';
 import { UPLOAD_SCHEME, intakeSource } from './intake.js';
-import { errMsg, log } from './log.js';
+import { errMsg, last4, log } from './log.js';
+import { choicesStillNeeded, joinNotes, standingChoices } from './polls.js';
 import { LYRIA_MODEL, generateMusic } from './lyria.js';
 import { extractSpan, mixMusic, render, verify, withOriginalAudio } from './media.js';
 import { OMNI_MAX_MS, OMNI_MIN_MS, editVideo } from './omni.js';
@@ -95,14 +96,16 @@ async function freezeProjects(): Promise<void> {
       const p = (await c.query(`SELECT * FROM sticky.projects WHERE id = $1 AND state = 'collecting' FOR UPDATE`, [id])).rows[0];
       if (!p) return null;
       const sources = (await c.query(`SELECT * FROM sticky.sources WHERE project_id = $1 AND status = 'normalized'`, [id])).rows;
+      const group = Boolean((await c.query(`SELECT is_group FROM sticky.threads WHERE chat_id = $1`, [p.chat_id])).rows[0]?.is_group);
+      const maxSourceMs = group ? LIMITS.groupMaxSourceMs : LIMITS.maxSourceMs;
       const originalMs = sources.reduce((s: number, r: any) => s + Number(r.timings?.originalMs ?? r.duration_ms ?? 0), 0);
       if (!sources.length) {
         await c.query(`UPDATE sticky.projects SET state = 'failed' WHERE id = $1`, [id]);
         return { chatId: p.chat_id, reply: COPY.failedFirst('download') };
       }
-      if (originalMs > LIMITS.maxSourceMs + 500) {
+      if (originalMs > maxSourceMs + 500) {
         await c.query(`UPDATE sticky.projects SET state = 'failed' WHERE id = $1`, [id]);
-        return { chatId: p.chat_id, reply: COPY.tooLong(Math.round(originalMs / 1000)) };
+        return { chatId: p.chat_id, reply: COPY.tooLong(Math.round(originalMs / 1000), maxSourceMs / 1000) };
       }
       if (config.echo) {
         await c.query(`UPDATE sticky.projects SET state = 'delivered' WHERE id = $1`, [id]);
@@ -166,16 +169,17 @@ async function pendingTexts(): Promise<void> {
 
 // ---------------------------------------------------------------------------------------------
 
-async function loadClips(projectId: string): Promise<{ clips: ClipForModel[]; normPaths: Record<string, string>; sourceIds: string[] }> {
+async function loadClips(projectId: string, group = false): Promise<{ clips: ClipForModel[]; normPaths: Record<string, string>; sourceIds: string[]; filmed: string[] }> {
   const sources = await q(`SELECT * FROM sticky.sources WHERE project_id = $1 AND status = 'normalized' ORDER BY clip_id`, [projectId]);
   const clips: ClipForModel[] = [];
   const normPaths: Record<string, string> = {};
   for (const s of sources) {
     const proxyPath = await ensureLocal(s.proxy_key);
     normPaths[s.clip_id] = await ensureLocal(s.norm_key);
-    clips.push({ clipId: s.clip_id, durationMs: s.duration_ms, hasAudio: s.has_audio, proxy: fs.readFileSync(proxyPath) });
+    clips.push({ clipId: s.clip_id, durationMs: s.duration_ms, hasAudio: s.has_audio, proxy: fs.readFileSync(proxyPath), from: group && s.author_handle ? last4(s.author_handle) : undefined });
   }
-  return { clips, normPaths, sourceIds: sources.map((s: any) => s.id) };
+  const filmed = sources.filter((s: any) => !s.generated).map((s: any) => s.clip_id);
+  return { clips, normPaths, sourceIds: sources.map((s: any) => s.id), filmed };
 }
 
 async function runJob(job: any): Promise<void> {
@@ -190,7 +194,7 @@ async function runJob(job: any): Promise<void> {
   const t0 = Date.now();
   try {
     const project = await one(
-      `SELECT p.*, t.current_project_id FROM sticky.projects p JOIN sticky.threads t ON t.chat_id = p.chat_id WHERE p.id = $1`,
+      `SELECT p.*, t.current_project_id, t.is_group AS group_chat FROM sticky.projects p JOIN sticky.threads t ON t.chat_id = p.chat_id WHERE p.id = $1`,
       [job.project_id],
     );
     if (!project || project.current_project_id !== project.id || project.state === 'closed') {
@@ -198,8 +202,10 @@ async function runJob(job: any): Promise<void> {
       log('job', { job: job.id, superseded: 'project no longer current' });
       return;
     }
-    await q(`UPDATE sticky.projects SET state = 'rendering' WHERE id = $1`, [project.id]);
-    const { clips, normPaths, sourceIds } = await timed('load', () => loadClips(project.id));
+    // A group's held clips stay held (inbound.ts): an edit queued before them still runs on the current cut.
+    await q(`UPDATE sticky.projects SET state = 'rendering' WHERE id = $1 AND state <> 'collecting'`, [project.id]);
+    const group = Boolean(project.group_chat);
+    const { clips, normPaths, sourceIds, filmed } = await timed('load', () => loadClips(project.id, group));
     if (!clips.length) throw new Error('no usable clips');
 
     const previous = await one(
@@ -224,7 +230,10 @@ async function runJob(job: any): Promise<void> {
       candidatesOffered = candidates.map((c) => c.id);
       const direction = (job.direction ?? '').split('\n').map((s: string) => s.trim()).filter(Boolean);
       const outliers = topOutliers(snapshot.outliers ?? []);
-      const plan = await timed('gemini', () => planV1({ clips, direction, candidates, targetMs: LIMITS.defaultTargetMs, outliers }));
+      // A group reel combines everyone's footage: every filmed clip appears, with a bit more room.
+      const everyClip = group && filmed.length > 1;
+      const targetMs = everyClip ? Math.min(LIMITS.maxTotalMs, Math.max(LIMITS.defaultTargetMs, 5_000 * filmed.length)) : LIMITS.defaultTargetMs;
+      const plan = await timed('gemini', () => planV1({ clips, direction, candidates, targetMs, outliers, everyClip }));
       segments = plan.segments;
       // A fresh plan reuses shot ids for different moments: only whole-reel overlays carry over.
       overlays = overlays.filter((o) => o.segmentId === null);
@@ -235,6 +244,45 @@ async function runJob(job: any): Promise<void> {
       explanation = plan.explanation;
       model = plan.model;
       await q(`UPDATE sticky.projects SET analysis = $2 WHERE id = $1`, [project.id, plan.analysis]);
+      // Group: one more pass applies every standing poll pick this cut lacks (from any poll in the chat) and
+      // every change texted while held. One job, one delivery. If the pass fails, the texted changes go back
+      // on hold and the combined cut still goes out.
+      if (group) {
+        const taken = await one(
+          `WITH old AS (SELECT held_notes FROM sticky.projects WHERE id = $1 FOR UPDATE)
+           UPDATE sticky.projects p SET held_notes = '{}' FROM old WHERE p.id = $1 RETURNING old.held_notes AS notes`,
+          [project.id],
+        );
+        const standing = await standingChoices(project.chat_id);
+        const pickTexts = new Set(standing.map((c) => c.instruction));
+        const choices = choicesStillNeeded(standing, { captions, music: project.music, overlays, transitions });
+        const texted = ((taken?.notes ?? []) as string[]).filter((n) => !pickTexts.has(n));
+        const asks = [...choices.map((c) => c.instruction), ...texted];
+        if (asks.length) {
+          try {
+            const r = await timed('choices', () => revise({
+              clips, analysis: plan.analysis, segments, techniqueTitle: technique.title,
+              direction: joinNotes(asks), overlays, transitions,
+            }));
+            if (r.segments) segments = r.segments;
+            if (r.overlays) overlays = r.overlays;
+            if (r.transitions) transitions = r.transitions;
+            if (r.captions === false) captions = null;
+            else if (r.captions) captions = r.captions;
+            if (r.music?.action === 'add') {
+              const t = Date.now();
+              musicTask = startMusic(project, r.music).finally(() => { stageMs.music = Date.now() - t; });
+            }
+            const named = choices.map((c) => c.label);
+            if (texted.length) named.push(plural(texted.length, 'texted change'));
+            explanation = `${explanation} With the group's picks: ${named.join(', ')}.`.trim();
+            log('choices', { job: job.id, applied: named.join(' | '), captions: Boolean(captions), overlays: overlays.length, transitions: transitions.length, music: r.music?.action });
+          } catch (err) {
+            log('choices', { job: job.id, failed: errMsg(err).slice(0, 300) }, 'warn');
+            if (texted.length) await q(`UPDATE sticky.projects SET held_notes = $2::text[] || held_notes WHERE id = $1`, [project.id, texted]);
+          }
+        }
+      }
       log('plan', {
         job: job.id, model, attempts: plan.attempts, ms: plan.ms, snapshot: snapshot.origin, snapshotAt: snapshot.refreshedAt, fresh: freshCount,
         technique: technique.id, hook: `${plan.analysis.hook?.clipId}@${plan.analysis.hook?.atMs}`,
@@ -363,7 +411,9 @@ async function runJob(job: any): Promise<void> {
     const late = await q(`SELECT id FROM sticky.sources WHERE project_id = $1 AND followup AND NOT (id = ANY($2::uuid[]))`, [project.id, sourceIds]);
     if (late.length) {
       await q(`UPDATE sticky.sources SET followup = false WHERE id = ANY($1::uuid[])`, [late.map((r: any) => r.id)]);
-      await q(`INSERT INTO sticky.jobs (project_id, kind, direction) VALUES ($1, 'v1', $2)`, [project.id, 'Work the newly added clip into the cut.']);
+      // A group holds new footage for its "go ahead" (inbound.ts); one-on-one recuts right away.
+      if (group) await q(`UPDATE sticky.projects SET state = 'collecting', collect_deadline = NULL WHERE id = $1 AND state = 'delivered'`, [project.id]);
+      else await q(`INSERT INTO sticky.jobs (project_id, kind, direction) VALUES ($1, 'v1', $2)`, [project.id, 'Work the newly added clip into the cut.']);
     } else if (sourceIds.length) {
       await q(`UPDATE sticky.sources SET followup = false WHERE id = ANY($1::uuid[])`, [sourceIds]);
     }

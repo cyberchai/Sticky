@@ -11,7 +11,7 @@ import { one, q, tx } from './db.js';
 import { whyThisCut } from './explain.js';
 import { routeText } from './gemini.js';
 import { errMsg, last4, log } from './log.js';
-import { applyVote } from './polls.js';
+import { applyVote, choicesStillNeeded, joinNotes, standingChoices } from './polls.js';
 import { transcribeVoice } from './voice.js';
 import { CONTACT_LIMIT, addContacts, joinUrl, phonesIn } from './contacts.js';
 import { linqCall, openChat } from './linq.js';
@@ -129,8 +129,16 @@ export async function acceptEvent(raw: string, providerEventId: string): Promise
     );
     if (!ins.rowCount) return 'duplicate' as const;
     if (kind === 'video') {
-      after.push(...await attachVideos(c, p));
-      if (p.isGroup) after.push(() => greetGroup(p.chatId!));
+      const hooks = await attachVideos(c, p);
+      if (p.isGroup) {
+        // The hello goes out before "Got …'s clip".
+        after.push(async () => {
+          await greetGroup(p.chatId!);
+          for (const fn of hooks) await fn();
+        });
+      } else {
+        after.push(...hooks);
+      }
     }
     if (kind === 'text') after.push(() => processText(eventId));
     if ((kind === 'video' || kind === 'text') && p.isGroup) after.push(() => syncGroupRoster(p));
@@ -166,8 +174,10 @@ async function upsertThread(c: pg.PoolClient, p: ParsedLinq): Promise<any> {
 }
 
 /**
- * The first video opens a project; more videos inside the quiet window join it (the window resets);
- * a clip during a render is kept for a follow-up cut; a video after a delivered cut starts fresh.
+ * One-on-one: the first video opens a project; more videos inside the quiet window join it (the window
+ * resets); a clip during a render is kept for a follow-up cut; a video after a delivered cut starts fresh.
+ * Group chat: the reel is everyone's footage. Clips (including ones after a cut) join the group's reel
+ * and are held (collect_deadline NULL) until someone says "go ahead"; then one cut combines them all.
  */
 async function attachVideos(c: pg.PoolClient, p: ParsedLinq): Promise<After[]> {
   const thread = await upsertThread(c, p);
@@ -175,20 +185,29 @@ async function attachVideos(c: pg.PoolClient, p: ParsedLinq): Promise<After[]> {
   let project = thread.current_project_id
     ? (await c.query('SELECT * FROM sticky.projects WHERE id = $1 FOR UPDATE', [thread.current_project_id])).rows[0]
     : null;
+  const group = Boolean(thread.is_group);
   const window = `${config.collectWindowMs} milliseconds`;
   let followup = false;
-  if (!project || ['delivered', 'failed', 'closed'].includes(project.state)) {
+  if (group && project?.state === 'delivered') {
+    await c.query(
+      `UPDATE sticky.projects SET state = 'collecting', collect_deadline = NULL, last_inbound_at = now(),
+         direction = CASE WHEN $2::text IS NULL THEN direction ELSE array_append(direction, $2::text) END WHERE id = $1`,
+      [project.id, p.text || null],
+    );
+  } else if (!project || ['delivered', 'failed', 'closed'].includes(project.state)) {
     const direction = [...(thread.pending_direction ?? []), ...(p.text ? [p.text] : [])];
     project = (await c.query(
-      `INSERT INTO sticky.projects (chat_id, state, collect_deadline, direction) VALUES ($1, 'collecting', now() + $2::interval, $3) RETURNING *`,
-      [p.chatId, window, direction],
+      `INSERT INTO sticky.projects (chat_id, state, collect_deadline, direction)
+       VALUES ($1, 'collecting', CASE WHEN $4 THEN NULL ELSE now() + $2::interval END, $3) RETURNING *`,
+      [p.chatId, window, direction, group],
     )).rows[0];
     await c.query(`UPDATE sticky.threads SET current_project_id = $2, pending_direction = '{}' WHERE chat_id = $1`, [p.chatId, project.id]);
   } else if (project.state === 'collecting') {
+    // A group's hold (or its "go ahead" already given) is left alone; one-on-one, the window resets.
     await c.query(
-      `UPDATE sticky.projects SET collect_deadline = now() + $2::interval, last_inbound_at = now(),
+      `UPDATE sticky.projects SET collect_deadline = CASE WHEN $4 THEN collect_deadline ELSE now() + $2::interval END, last_inbound_at = now(),
          direction = CASE WHEN $3::text IS NULL THEN direction ELSE array_append(direction, $3::text) END WHERE id = $1`,
-      [project.id, window, p.text || null],
+      [project.id, window, p.text || null, group],
     );
   } else {
     followup = true;
@@ -199,19 +218,28 @@ async function attachVideos(c: pg.PoolClient, p: ParsedLinq): Promise<After[]> {
     );
   }
   const { rows: [{ n }] } = await c.query<{ n: number }>('SELECT count(*)::int AS n FROM sticky.sources WHERE project_id = $1', [project.id]);
+  const maxClips = group ? LIMITS.groupMaxClips : LIMITS.maxClips;
   let count = n;
+  let added = 0;
   let skipped = 0;
   for (const v of p.videos) {
-    if (count >= LIMITS.maxClips) { skipped++; continue; }
+    if (count >= maxClips) { skipped++; continue; }
     const res = await c.query(
-      `INSERT INTO sticky.sources (project_id, clip_id, provider_message_id, part_id, url, mime, followup, name)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT DO NOTHING RETURNING id`,
-      [project.id, `c${count + 1}`, p.messageId ?? 'unknown', v.partId, v.url, v.mime, followup, v.name],
+      `INSERT INTO sticky.sources (project_id, clip_id, provider_message_id, part_id, url, mime, followup, name, author_handle)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING RETURNING id`,
+      [project.id, `c${count + 1}`, p.messageId ?? 'unknown', v.partId, v.url, v.mime, followup, v.name, p.from],
     );
-    if (res.rowCount) count++;
+    if (res.rowCount) { count++; added++; }
   }
   const after: After[] = [async () => { const { kickIntake } = await import('./jobs.js'); kickIntake(); }];
-  if (skipped) after.push(() => say(p.chatId!, COPY.tooMany).then(() => {}));
+  if (skipped) after.push(() => say(p.chatId!, group ? COPY.groupTooMany : COPY.tooMany).then(() => {}));
+  if (group && added) {
+    const tally = (await c.query(
+      `SELECT count(*)::int AS clips, count(DISTINCT author_handle)::int AS people FROM sticky.sources WHERE project_id = $1 AND NOT generated`,
+      [project.id],
+    )).rows[0];
+    after.push(() => reply(p.chatId!, COPY.groupClipIn(p.from ? last4(p.from) : 'that', tally.clips, Math.max(1, tally.people))).then(() => {}));
+  }
   return after;
 }
 
@@ -329,7 +357,23 @@ async function handleVote(p: ParsedLinq): Promise<void> {
   await serial(p.chatId!, async () => {
     const r = await applyVote({ messageId: p.messageId!, optionId: p.poll!.optionId, voter: p.from, action: p.poll!.action });
     if (!r) return;
-    const project = await one('SELECT * FROM sticky.projects WHERE id = $1', [r.projectId]);
+    let project = await one('SELECT * FROM sticky.projects WHERE id = $1', [r.projectId]);
+    const thread = await one('SELECT is_group, current_project_id FROM sticky.threads WHERE chat_id = $1', [p.chatId]);
+    if (thread?.is_group) {
+      // Group: a pick on any poll in the chat is held on the current reel with everyone's other picks and
+      // changes until "go ahead". Only the first held item gets a reply.
+      if (thread.current_project_id && thread.current_project_id !== r.projectId) {
+        project = await one('SELECT * FROM sticky.projects WHERE id = $1', [thread.current_project_id]);
+      }
+      if (!project || project.state === 'closed') return;
+      const held = await one(
+        `UPDATE sticky.projects SET held_notes = CASE WHEN $2 = ANY(held_notes) THEN held_notes ELSE array_append(held_notes, $2) END
+         WHERE id = $1 RETURNING cardinality(held_notes) AS n`,
+        [project.id, r.instruction],
+      );
+      if (held?.n === 1) await reply(p.chatId!, COPY.groupPicksHeld);
+      return;
+    }
     if (!project || project.state === 'closed') return;
     await queueEdit(project, r.instruction, new Date(), Boolean(await latestVersion(project.id)), p.from === 'web' ? null : p.from);
   });
@@ -401,8 +445,14 @@ async function handleGroupText(p: ParsedLinq, project: any, receivedAt: Date, vo
   if (command === 'NEW REEL') return newReel(chatId, project);
   if (command === 'STOP' || command === 'UNSUBSCRIBE') return void (await reply(chatId, COPY.groupStop));
 
+  const holding = project?.state === 'collecting' && project.collect_deadline === null;
+  const waiting = holding || (project?.held_notes?.length ?? 0) > 0;
+  if (waiting && isGoAhead(text)) return goAhead(chatId, project);
   const hasCut = project ? Boolean(await latestVersion(project.id)) : false;
-  const intent = await routeText({ text, state: project ? project.state : 'no project yet', hasCut, isGroup: true });
+  let state: string = project ? project.state : 'no project yet';
+  if (holding) state = 'holding clips from the group, waiting for someone to say go ahead';
+  else if (waiting) state = 'holding changes the group asked for, waiting for someone to say go ahead';
+  const intent = await routeText({ text, state, hasCut, isGroup: true });
   log('text', { chat: chatId, group: true, from: last4(p.from), intent, voice: voice || undefined, project: project?.id, text: text.slice(0, 80) });
 
   switch (intent) {
@@ -410,18 +460,88 @@ async function handleGroupText(p: ParsedLinq, project: any, receivedAt: Date, vo
     case 'new_reel': return newReel(chatId, project);
     case 'why': return why(chatId, project);
     case 'stop': return void (await reply(chatId, COPY.groupStop));
+    case 'go':
+      if (waiting) return goAhead(chatId, project);
+      return;
     case 'revise':
       if (project?.state === 'collecting') {
-        // Clips still arriving: this is direction for the first cut.
+        // Clips still arriving: this is direction for the combined cut.
         await q('UPDATE sticky.projects SET direction = array_append(direction, $2) WHERE id = $1', [project.id, text]);
+        if (holding) await reply(chatId, COPY.groupHeld(text));
         return;
       }
       if (!project || project.state === 'closed') return holdBrief(chatId, text);
-      if (voice) await reply(chatId, COPY.heard(text));
-      return queueEdit(project, text, receivedAt, hasCut, p.from);
+      // A group's changes wait for "go ahead" and go out together: one version for the room, not one each.
+      await q('UPDATE sticky.projects SET held_notes = array_append(held_notes, $2) WHERE id = $1', [project.id, text]);
+      return void (await reply(chatId, COPY.groupHeld(text)));
     default:
       return; // people talking to each other
   }
+}
+
+const GO_OBJ = "(?:it|them|those|these|both|em|'em|all|all of (?:them|those|these|it)|everything|our (?:clips|videos)|the (?:clips|videos))";
+const GO_PHRASE = [
+  'go', 'go ahead', 'go for it', 'do it', "let'?s go", "let'?s do it", "let'?s see it", 'ready', 'done', 'all in', 'send it',
+  `cut ${GO_OBJ}`, `edit ${GO_OBJ}`, 'make (?:the|a|one|our) (?:reel|video|edit)', `make ${GO_OBJ} (?:one|into one)(?: reel| video)?`,
+  `combine(?: ${GO_OBJ})?`, `merge(?: ${GO_OBJ})?`, `put ${GO_OBJ} together`, `use ${GO_OBJ}`,
+  "we'?re (?:good|done|ready|all in)", "that'?s (?:all|it|everything)",
+].join('|');
+const GO_AHEAD = new RegExp(
+  `^(?:(?:ok(?:ay)?|alright|yes|yep|yeah|cool|great|perfect|hey)\\b[\\s,.!]*)*(?:sticky\\b[\\s,:.!]*)?(?:please\\s+)?(?:${GO_PHRASE})(?:\\s+(?:now|please|pls|sticky|thanks|thx|guys|lol|then))*\\W*$`,
+  'i',
+);
+
+/**
+ * A message that is only a go-ahead ("go ahead", "Combine those.", "use both", "ok sticky do it", "we're
+ * ready!"). Anything longer ("make it 8 seconds", "go ahead but open on the dog") goes to routeText, which
+ * keeps it as direction or classifies it as a go-ahead.
+ */
+export function isGoAhead(text: string): boolean {
+  return GO_AHEAD.test(text.trim());
+}
+
+/**
+ * "go ahead" in a group. New clips held: release them; the combined cut (jobs.ts) applies every pick and
+ * held change. No new clips: everything held since the last version goes out as ONE edit.
+ */
+async function goAhead(chatId: string, project: any): Promise<void> {
+  const released = await one(
+    `UPDATE sticky.projects SET collect_deadline = now() WHERE id = $1 AND state = 'collecting' AND collect_deadline IS NULL RETURNING id`,
+    [project.id],
+  );
+  if (!released) return applyHeld(chatId, project);
+  const tally = await one(
+    `SELECT count(*)::int AS clips, count(DISTINCT author_handle)::int AS people FROM sticky.sources WHERE project_id = $1 AND NOT generated AND status <> 'failed'`,
+    [project.id],
+  );
+  log('group', { chat: chatId, goAhead: project.id, clips: tally?.clips, people: tally?.people });
+  await reply(chatId, COPY.groupGoAhead(tally?.clips ?? 1, Math.max(1, tally?.people ?? 1)));
+}
+
+async function applyHeld(chatId: string, project: any): Promise<void> {
+  // A combined cut that hasn't started yet takes the held changes itself.
+  if (project.state === 'collecting') return;
+  const v1Queued = await one(`SELECT 1 FROM sticky.jobs WHERE project_id = $1 AND kind = 'v1' AND status = 'queued'`, [project.id]);
+  if (v1Queued) return;
+  const taken = await one(
+    `WITH old AS (SELECT held_notes FROM sticky.projects WHERE id = $1 FOR UPDATE)
+     UPDATE sticky.projects p SET held_notes = '{}' FROM old WHERE p.id = $1 AND cardinality(old.held_notes) > 0 RETURNING old.held_notes AS notes`,
+    [project.id],
+  );
+  if (!taken) return;
+  const latest = await latestVersion(project.id);
+  if (!latest) return;
+  // Picks the cut already has (captions on, music in...) aren't asked for twice.
+  const picks = new Map((await standingChoices(chatId)).map((c) => [c.instruction, c]));
+  const cut = { captions: latest.captions, music: project.music, overlays: latest.overlays ?? [], transitions: latest.transitions ?? [] };
+  const notes = (taken.notes as string[]).filter((n) => {
+    const pick = picks.get(n);
+    return !pick || choicesStillNeeded([pick], cut).length > 0;
+  });
+  if (!notes.length) return void (await reply(chatId, COPY.groupNothingNew));
+  log('group', { chat: chatId, goAhead: project.id, changes: notes.length });
+  await reply(chatId, COPY.groupApplying(notes.length));
+  await queueEdit(project, joinNotes(notes), new Date(), true, null);
 }
 
 /** A brief sent before any video waits on the thread for the next video. */

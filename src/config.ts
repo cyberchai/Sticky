@@ -46,6 +46,9 @@ export function today(): string {
 export const LIMITS = {
   maxClips: 3,
   maxSourceMs: 60_000,
+  /** A group's reel combines everyone's clips, so it takes more of them. */
+  groupMaxClips: 6,
+  groupMaxSourceMs: 90_000,
   defaultTargetMs: 12_000,
   minTotalMs: 6_000,
   maxTotalMs: 20_000,
@@ -55,6 +58,10 @@ export const LIMITS = {
   freshDays: 14,
   snapshotTtlMs: 6 * 60 * 60 * 1000,
 };
+
+export function plural(n: number, one: string, many = `${one}s`): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
 
 /** The fixed reply copy (Sticky's product spec; Sticky is not the Asaply bot). */
 export const COPY = {
@@ -66,7 +73,7 @@ export const COPY = {
   optedOut: "You're opted out. Text START to come back.",
   optedIn: "You're back in. Send a video.",
   tooMany: `I can cut up to ${3} videos at once. I kept the first three.`,
-  tooLong: (s: number) => `That's ${s}s of footage. I can cut up to 60 seconds total. Send shorter clips?`,
+  tooLong: (s: number, maxS = 60) => `That's ${s}s of footage. I can cut up to ${maxS} seconds total. Send shorter clips?`,
   notVideo: 'Send me a video and I’ll cut it into a reel.',
   help: 'Text me a change to the cut, ask “Why this cut?”, or send new footage.',
   nothingYet: 'Nothing to explain yet. Send a video first.',
@@ -79,6 +86,14 @@ export const COPY = {
   deliveredFor: (versionNo: number, who: string, said: string) =>
     `Here's v${versionNo} for ${who}: “${said.length > 80 ? `${said.slice(0, 77)}…` : said}”. Anyone here can text a change.`,
   groupHello: "Hi all, I'm Sticky. Send clips and I'll cut a reel. Anyone here can text a change or send a voice note.",
+  groupClipIn: (who: string, clips: number, people: number) =>
+    `Got ${who}'s clip (${plural(clips, 'clip')} from ${plural(people, 'person', 'people')} so far). Send more, or say “go ahead” and I'll cut everyone's footage into one reel.`,
+  groupGoAhead: (clips: number, people: number) => `On it: cutting ${plural(clips, 'clip')} from ${plural(people, 'person', 'people')} into one reel.`,
+  groupHeld: (said: string) => `Noted: “${said.length > 60 ? `${said.slice(0, 57)}…` : said}”. Say “go ahead” when everyone’s ready and I’ll make one version with everything.`,
+  groupPicksHeld: 'Got it. Everyone can vote, then say “go ahead” and I’ll make one version with all the picks.',
+  groupApplying: (n: number) => `On it: one version with ${plural(n, 'change')}.`,
+  groupNothingNew: 'Everything picked is already in the cut. Text a change or vote, then say “go ahead”.',
+  groupTooMany: `I can combine up to ${6} clips in a group reel. I kept the first six.`,
   groupStop: "To stop me in this group, remove me from the chat. I'll only answer messages meant for me.",
   heard: (text: string) => `Heard: “${text}”`,
   addedPeople: (r: { added: string[]; already: string[]; full: string[]; used: number; limit: number; link: string }) => [

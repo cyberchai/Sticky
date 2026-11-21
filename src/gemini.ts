@@ -94,6 +94,8 @@ const pointSchema = {
 
 export interface ClipForModel extends ClipInfo {
   proxy: Buffer;
+  /** Group chats: who sent this clip (last 4 digits only). */
+  from?: string;
 }
 
 function clipInfosOf(clips: ClipForModel[]): ClipInfo[] {
@@ -111,7 +113,7 @@ export interface Analysis {
 function videoParts(clips: ClipForModel[], fps: number): unknown[] {
   const parts: unknown[] = [];
   for (const c of clips) {
-    parts.push({ text: `Clip ${c.clipId}: ${c.durationMs} ms long, ${c.hasAudio ? 'with its own recorded audio' : 'no recorded audio (silent)'}.` });
+    parts.push({ text: `Clip ${c.clipId}: ${c.durationMs} ms long, ${c.hasAudio ? 'with its own recorded audio' : 'no recorded audio (silent)'}${c.from ? `, sent by ${c.from}` : ''}.` });
     parts.push({ inlineData: { mimeType: 'video/mp4', data: c.proxy.toString('base64') }, videoMetadata: { fps } });
   }
   return parts;
@@ -201,6 +203,8 @@ export async function planV1(input: {
   candidates: Candidate[];
   targetMs: number;
   outliers?: Outlier[];
+  /** A group reel: the clips come from different people and every clip must appear in the cut. */
+  everyClip?: boolean;
 }): Promise<PlanResult> {
   const clipsInfo = clipInfosOf(input.clips);
   const target = Math.min(input.targetMs, usableMs(clipsInfo));
@@ -213,7 +217,8 @@ ${JSON.stringify(input.candidates.map(candidateBrief), null, 1)}
 ${outliers.length ? `Measured outliers this week (real counts from a trending feed; posts whose views far outran their creator's following), with how each one OPENS:
 ${JSON.stringify(outliers.map((o) => ({ id: o.id, platform: o.platform, openingPattern: o.hook, opening: o.opening, viewsPerFollower: o.viewsPerFollower })), null, 1)}
 If THIS footage contains a moment that can open the same way (same opening pattern, e.g. a spoken question, a bold claim, a reveal), open the cut on that moment, set hookEvidenceId to that outlier's id and sharedPattern to one short phrase naming the shared opening. Otherwise set hookEvidenceId to null. Never imply this reel will get similar numbers.` : 'No measured outliers are available; set hookEvidenceId to null.'}
-Use segment ids s1, s2, s3... in playback order.`;
+Use segment ids s1, s2, s3... in playback order.${input.everyClip ? `
+THIS IS A GROUP REEL: the clips were sent by different people in a group chat. Make ONE reel that combines them: every clip (${clipsInfo.map((c) => c.clipId).join(', ')}) must appear in at least one segment. Open on the strongest moment from any clip, and give each person's footage a real moment, not a flash.` : ''}`;
 
   let retryNote = '';
   let totalModelMs = 0;
@@ -224,6 +229,10 @@ Use segment ids s1, s2, s3... in playback order.`;
     totalModelMs += ms;
     const segments = normalizeSegments(data?.segments);
     const errors = validateSegments(segments, clipsInfo);
+    if (input.everyClip) {
+      const missing = clipsInfo.filter((c) => !segments.some((s) => s.clipId === c.clipId)).map((c) => c.clipId);
+      if (missing.length) errors.push(`this is a group reel, so every clip must appear in at least one segment; missing: ${missing.join(', ')}`);
+    }
     const technique = input.candidates.find((c) => c.id === data?.techniqueId);
     const fit = Array.isArray(data?.candidateFit) ? data.candidateFit : [];
     if (!technique) errors.push(`techniqueId "${data?.techniqueId}" is not one of the candidate ids`);
@@ -517,12 +526,12 @@ The user now says: "${input.direction}"`;
 // Text routing (no media): what does this message want?
 // ---------------------------------------------------------------------------------------------
 
-export type Intent = 'revise' | 'why' | 'keep' | 'new_reel' | 'stop' | 'start' | 'other' | 'chatter';
+export type Intent = 'revise' | 'why' | 'keep' | 'new_reel' | 'stop' | 'start' | 'other' | 'chatter' | 'go';
 
 export async function routeText(input: { text: string; state: string; hasCut: boolean; isGroup?: boolean }): Promise<Intent> {
   const schema = {
     type: 'object',
-    properties: { intent: { type: 'string', enum: ['revise', 'why', 'keep', 'new_reel', 'stop', 'start', 'other', 'chatter'] } },
+    properties: { intent: { type: 'string', enum: ['revise', 'why', 'keep', 'new_reel', 'stop', 'start', 'other', 'chatter', 'go'] } },
     required: ['intent'],
   };
   const system = `Classify one text message sent to Sticky, a video-editing assistant that turns footage into a Reel.
@@ -533,7 +542,8 @@ new_reel = wanting to start over with a new, separate reel.
 stop = wanting no more messages (stop, unsubscribe, quit).
 start = opting back in after stopping.
 other = greetings, thanks, unrelated chat addressed to Sticky.
-chatter = (group chats only) people talking to each other, not to Sticky.${input.isGroup ? `
+chatter = (group chats only) people talking to each other, not to Sticky.
+go = (group chats only, while Sticky is holding the group's clips) telling Sticky to start: everyone's clips are in, cut/combine/use them now ("go ahead and combine our videos", "ok we're all in, make it"). A message that ALSO asks for a specific change ("go ahead but open on the dog") is revise.${input.isGroup ? `
 THIS IS A GROUP CHAT with several people and Sticky. Most messages are people talking to each other: classify those as chatter.
 Only use revise/why/keep/new_reel when the message is clearly meant for the editor: it names Sticky, or it is an instruction about the reel that was just sent ("make it shorter", "open on the dog", "add music"), or asks why the reel was cut that way. Reactions and opinions about the reel ("lol love it", "this is so good") are chatter unless they ask for a change or say to keep it.` : ''}`;
   try {

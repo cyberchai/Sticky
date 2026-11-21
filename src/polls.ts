@@ -8,14 +8,14 @@
  */
 import crypto from 'node:crypto';
 import { say } from './channel.js';
-import { one, tx } from './db.js';
+import { one, q, tx } from './db.js';
 import type { Segment } from './edl.js';
 import type { Analysis } from './gemini.js';
 import { linqCall } from './linq.js';
 import { errMsg, log } from './log.js';
 
 export interface PollOption { optionId: string; label: string; instruction: string; applied: boolean }
-interface Suggestion { label: string; instruction: string }
+export interface Suggestion { label: string; instruction: string }
 /** What a browser sees of a poll: no instructions, just what to show. */
 export interface PollView { messageId: string; options: Array<{ optionId: string; label: string; applied: boolean }> }
 /** A vote that should become a revise job. */
@@ -23,6 +23,8 @@ interface VoteChange { projectId: string; instruction: string; label: string }
 type VoteOutcome = 'queued' | 'already_applied' | 'cancelled' | 'ignored';
 
 const QUESTION = 'Want any of these? Vote and I’ll add them, or text me anything.';
+/** In a group, picks are held until someone says "go ahead", then all go out as one version (inbound.ts). */
+const GROUP_QUESTION = 'Want any of these? Everyone can vote (or text a change), then say “go ahead” and I’ll make one version with all of it.';
 const MAX_OPTIONS = 4;
 
 /** Next steps worth offering for this cut, most useful first. Labels are short (they're poll options). */
@@ -72,14 +74,16 @@ export async function sendPoll(versionId: string): Promise<void> {
     );
   };
   const uuids = () => options.map(() => crypto.randomUUID());
+  const group = Boolean((await one(`SELECT is_group FROM sticky.threads WHERE chat_id = $1`, [v.chat_id]))?.is_group);
+  const question = group ? GROUP_QUESTION : QUESTION;
 
   if (String(v.chat_id).startsWith('web:')) {
     await store(`web-poll-${crypto.randomUUID()}`, 'web', uuids());
-    await say(v.chat_id, QUESTION).catch(() => {});
+    await say(v.chat_id, question).catch(() => {});
     log('poll', { project: v.project_id, how: 'web', options: labels.join(' | ') });
     return;
   }
-  await say(v.chat_id, QUESTION).catch((err) => log('poll', { project: v.project_id, question: 'failed', error: errMsg(err) }, 'warn'));
+  await say(v.chat_id, question).catch((err) => log('poll', { project: v.project_id, question: 'failed', error: errMsg(err) }, 'warn'));
   const r = await linqCall('POST', `/chats/${encodeURIComponent(v.chat_id)}/polls`, {
     poll: { options: labels.map((text) => ({ text })), idempotency_key: `sticky-poll-${v.id}` },
   }, 15_000);
@@ -123,12 +127,18 @@ export async function applyVote(e: { messageId: string; optionId: string; voter:
         [e.messageId, e.optionId, e.voter],
       )).rowCount;
       if (!stillWanted) {
-        const cancelled = await c.query(
+        // A group pick still held for "go ahead" is dropped from the hold; otherwise its queued edit is cancelled.
+        const unheld = (await c.query(
+          `UPDATE sticky.projects SET held_notes = array_remove(held_notes, $2)
+           WHERE id = (SELECT current_project_id FROM sticky.threads WHERE chat_id = $1) AND $2 = ANY(held_notes) RETURNING id`,
+          [poll.chat_id, o.instruction],
+        )).rowCount;
+        const cancelled = unheld || (await c.query(
           `UPDATE sticky.jobs SET status = 'superseded', error = 'vote taken back', finished_at = now()
            WHERE project_id = $1 AND status = 'queued' AND direction = $2 RETURNING id`,
           [poll.project_id, o.instruction],
-        );
-        if (cancelled.rowCount) { o.applied = false; outcome = 'cancelled'; }
+        )).rowCount;
+        if (cancelled) { o.applied = false; outcome = 'cancelled'; }
       }
     }
     await c.query(`UPDATE sticky.polls SET options = $2 WHERE message_id = $1`, [e.messageId, JSON.stringify(options)]);
@@ -139,6 +149,43 @@ export async function applyVote(e: { messageId: string; optionId: string; voter:
     log('poll', { vote: e.action, message: e.messageId, option: o?.label ?? e.optionId, outcome });
     return result;
   });
+}
+
+/**
+ * A group chat's poll picks are standing choices for the group's reel: every option anyone voted for
+ * on any poll in the chat, oldest first, once per label. A fresh combined cut applies them all, even
+ * the ones whose own edit never ran (a newer clip took over the reel first).
+ */
+export async function standingChoices(chatId: string): Promise<Suggestion[]> {
+  const polls = await q(`SELECT options FROM sticky.polls WHERE chat_id = $1 ORDER BY created_at`, [chatId]);
+  const seen = new Map<string, Suggestion>();
+  for (const p of polls) {
+    for (const o of p.options as PollOption[]) {
+      if (o.applied && !seen.has(o.label)) seen.set(o.label, { label: o.label, instruction: o.instruction });
+    }
+  }
+  return [...seen.values()];
+}
+
+/** The standing choices this cut doesn't already have (captions, music, a title and transitions carry). */
+export function choicesStillNeeded(choices: Suggestion[], cut: {
+  captions: unknown | null;
+  music: unknown | null;
+  overlays: Array<{ kind: string }>;
+  transitions: unknown[];
+}): Suggestion[] {
+  return choices.filter((c) => {
+    if (/caption/i.test(c.label)) return !cut.captions;
+    if (/music/i.test(c.label)) return !cut.music;
+    if (/title/i.test(c.label)) return !cut.overlays.some((o) => o.kind === 'text');
+    if (/crossfade|whip|transition/i.test(c.label)) return !cut.transitions.length;
+    return true;
+  });
+}
+
+/** Held picks and changes as one edit direction: each note ends in punctuation, joined with spaces. */
+export function joinNotes(notes: string[]): string {
+  return notes.map((n) => (/[.!?]$/.test(n.trim()) ? n.trim() : `${n.trim()}.`)).join(' ');
 }
 
 export function pollView(row: { message_id: string; options: PollOption[] }): PollView {
