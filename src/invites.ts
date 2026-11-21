@@ -36,13 +36,33 @@ export function codesIn(text: string): string[] {
 
 export const inviteUrl = (code: string) => `${joinUrl()}/g/${code}`;
 
-export async function createInvite(name: string): Promise<{ code: string; name: string }> {
-  const row = await one<{ code: string; name: string }>(
-    'INSERT INTO sticky.group_invites (code, name) VALUES ($1, $2) RETURNING code, name',
-    [newCode(), name],
+/** A new invite; `hostKey` goes only to the laptop that made it (it unlocks the joiners' numbers). */
+export async function createInvite(name: string): Promise<{ code: string; name: string; hostKey: string }> {
+  const row = await one<{ code: string; name: string; host_key: string }>(
+    'INSERT INTO sticky.group_invites (code, name, host_key) VALUES ($1, $2, $3) RETURNING code, name, host_key',
+    [newCode(), name, crypto.randomBytes(16).toString('hex')],
   );
   log('invite', { created: row!.code });
-  return row!;
+  return { code: row!.code, name: row!.name, hostKey: row!.host_key };
+}
+
+export interface InvitePerson { phone: string; texted: boolean; inChat: boolean }
+
+/**
+ * Everyone who signed up, for the host only: the fallback when Linq can't start or add to the group is
+ * the host putting these numbers (and Sticky's) into a group chat by hand. Null when the key is wrong.
+ */
+export async function invitePeople(code: string, hostKey: string): Promise<{ started: boolean; people: InvitePerson[] } | null> {
+  const invite = await one<{ chat_id: string | null; host_key: string | null }>('SELECT chat_id, host_key FROM sticky.group_invites WHERE code = $1', [code]);
+  const given = Buffer.from(hostKey);
+  const want = Buffer.from(invite?.host_key ?? '');
+  if (!want.length || given.length !== want.length || !crypto.timingSafeEqual(given, want)) return null;
+  const rows = await q(
+    `SELECT phone, texted_at IS NOT NULL AS texted, added_at IS NOT NULL AS in_chat
+     FROM sticky.group_invite_members WHERE code = $1 ORDER BY signed_up_at`,
+    [code],
+  );
+  return { started: Boolean(invite!.chat_id), people: rows.map((r) => ({ phone: r.phone, texted: r.texted, inChat: r.in_chat })) };
 }
 
 export interface InviteStatus { name: string; started: boolean; signedUp: number; texted: number; inChat: number }
@@ -100,11 +120,13 @@ export async function joinFromText(phone: string, text: string): Promise<string 
       [code, phone],
     )).rows[0];
     if (me.added_at) return { reply: COPY.groupJoinAlready(invite.name) };
+    // Linq couldn't do it: they're still through (on the list, replies unlocked), and the host adds them by
+    // hand from the numbers on their laptop (invitePeople). Texting the join again retries automatically.
     const failed = async (err: unknown) => {
       const msg = errMsg(err);
       log('invite', { code, phone: last4(phone), failed: msg }, 'warn');
       await c.query('UPDATE sticky.group_invite_members SET error = $3 WHERE code = $1 AND phone = $2', [code, phone, msg.slice(0, 300)]);
-      return { reply: COPY.groupJoinFailed(joinText(code)) };
+      return { reply: COPY.groupJoinByHand(invite.name) };
     };
 
     if (invite.chat_id) {

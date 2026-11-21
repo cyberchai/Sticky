@@ -46,6 +46,16 @@
     .pill[disabled] { opacity: .5; pointer-events: none; }
     .newgroup { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; width: auto; }
     .newgroup input { width: min(260px, 70vw); padding: 9px 14px; font-size: 15px; border-radius: 999px; text-align: left; }
+    /* Host only: the joiners' numbers, to add them to a group chat by hand when Sticky can't. */
+    .byhand { display: grid; justify-items: center; gap: 8px; width: min(560px, 92vw); }
+    .byhand summary { list-style: none; }
+    .byhand summary::-webkit-details-marker { display: none; }
+    .byhand ol {
+      list-style: none; width: 100%; columns: 3 150px; column-gap: 16px; max-height: 18vh; overflow: auto;
+      font-size: 14px; font-weight: 500; font-variant-numeric: tabular-nums; text-align: left;
+    }
+    .byhand li { break-inside: avoid; padding: 2px 0; }
+    .byhand li small { color: var(--ink-2); }
 
     /* Phone: you can't scan your own screen, so it's just the number. */
     .phone { display: none; align-content: center; gap: 22px; }
@@ -88,6 +98,12 @@
       <p class="title" id="title" hidden></p>
       <p class="hint" id="hint">Scan with your phone</p>
       <p class="count" id="count" role="status" aria-live="polite" hidden></p>
+      <details class="byhand" id="byHand" hidden>
+        <summary class="pill" id="byHandSum">Add by hand</summary>
+        <p class="hint" id="byHandHint"></p>
+        <ol id="byHandList"></ol>
+        <button class="pill solid" id="copyNums" type="button">Copy numbers</button>
+      </details>
       <button class="pill" id="newGroup" type="button">+ New group chat</button>
       <form class="newgroup" id="groupForm" hidden>
         <input id="groupName" maxlength="40" autocomplete="off" placeholder="Name it (optional)" aria-label="Group chat name" />
@@ -136,6 +152,7 @@
         showGroup(g.name);
         $('count').hidden = false;
         $('count').textContent = countLine(g);
+        await refreshPeople().catch(() => {});
       } catch (err) {
         $('qr').hidden = true; $('title').hidden = true; $('count').hidden = true;
         $('hint').textContent = err.message;
@@ -157,6 +174,48 @@
       $('smsBtn').textContent = 'Send the join text';
       $('doneHint').textContent = 'Send it and you’re in the group chat.';
     }
+    // ---- Host only: the fallback list. The key came back when this laptop made the group. ----
+    const hostSlot = (c) => `sticky.groupHost.${c}`;
+    let hostKey = null;
+    try { hostKey = code && localStorage.getItem(hostSlot(code)); } catch { /* private mode: this tab only */ }
+    let copyText = '';
+    const pretty = (e164) => {
+      const m = /^\+1(\d{3})(\d{3})(\d{4})$/.exec(e164);
+      return m ? `(${m[1]}) ${m[2]}-${m[3]}` : e164;
+    };
+    function personItem(label, note) {
+      const li = document.createElement('li');
+      li.textContent = label;
+      if (note) { const s = document.createElement('small'); s.textContent = ` · ${note}`; li.append(s); }
+      return li;
+    }
+    async function refreshPeople() {
+      if (!desk || !code || !hostKey) return;
+      const res = await fetch(`/web/groups/${code}/people`, { cache: 'no-store', headers: { 'X-Sticky-Host': hostKey } });
+      if (!res.ok) { $('byHand').hidden = true; return; }
+      const r = await res.json();
+      const todo = r.people.filter((p) => !p.inChat);
+      $('byHand').hidden = false;
+      $('byHandSum').textContent = todo.length ? `Add by hand · ${todo.length}` : 'Add by hand';
+      $('byHandHint').textContent = r.started
+        ? (todo.length ? 'Sticky couldn’t add these people. Add them to the group chat from your phone.' : 'Everyone who joined is in the group chat.')
+        : 'Sticky starts the group chat itself once two people are in. If it doesn’t, start an iMessage group with Sticky and these numbers.';
+      const items = todo.map((p) => personItem(pretty(p.phone), p.texted ? '' : 'no join text yet'));
+      if (!r.started && todo.length) items.unshift(personItem(`Sticky ${pretty(r.line)}`));
+      $('byHandList').replaceChildren(...items);
+      copyText = [...(r.started ? [] : [r.line]), ...todo.map((p) => p.phone)].join(', ');
+      $('copyNums').hidden = !todo.length;
+    }
+    $('copyNums').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(copyText);
+        $('copyNums').textContent = 'Copied';
+        setTimeout(() => { $('copyNums').textContent = 'Copy numbers'; }, 1500);
+      } catch {
+        $('deskMsg').className = 'msg'; $('deskMsg').textContent = copyText;
+      }
+    });
+
     if (code) refresh(); else $('qr').src = '/join/qr.png';
     document.addEventListener('visibilitychange', () => { if (!document.hidden && code && desk) refresh(); });
 
@@ -175,6 +234,8 @@
         const g = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(g.error || 'Couldn’t start a group. Try again?');
         code = g.code;
+        hostKey = g.hostKey;
+        try { localStorage.setItem(hostSlot(code), hostKey); } catch { /* kept for this tab only */ }
         history.pushState(null, '', `/join/g/${code}`);
         $('groupName').value = ''; $('groupForm').hidden = true; $('newGroup').hidden = false;
         showGroup(g.name);

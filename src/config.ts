@@ -99,7 +99,7 @@ export const COPY = {
   groupJoinWaiting: (name: string) => `You're in “${name}”. I'll start the group chat as soon as one more person joins.`,
   groupJoined: (name: string) => `You're in “${name}”. Look for the group chat in Messages.`,
   groupJoinAlready: (name: string) => `You're already in “${name}”. Look for the group chat in Messages.`,
-  groupJoinFailed: (joinText: string) => `I couldn't add you to the group chat just now. Text “${joinText}” again in a minute.`,
+  groupJoinByHand: (name: string) => `You're in “${name}”. You'll be added to the group chat shortly.`,
   heard: (text: string) => `Heard: “${text}”`,
   addedPeople: (r: { added: string[]; already: string[]; full: string[]; used: number; limit: number; link: string }) => [
     r.added.length ? `Added ${r.added.join(', ')}.` : '',

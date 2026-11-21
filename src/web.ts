@@ -18,7 +18,7 @@ import { CONTACT_LIMIT, addContacts, joinUrl, listContacts, phonesIn, removeCont
 import { q } from './db.js';
 import { acceptEvent } from './inbound.js';
 import { UPLOAD_SCHEME } from './intake.js';
-import { CODE, cleanName, createInvite, inviteExists, inviteStatus, inviteUrl, joinText, signUp } from './invites.js';
+import { CODE, cleanName, createInvite, inviteExists, invitePeople, inviteStatus, inviteUrl, joinText, signUp } from './invites.js';
 import { errMsg, log } from './log.js';
 import { pollView } from './polls.js';
 import { cachePath, ensureDir, putFile } from './store.js';
@@ -103,6 +103,14 @@ async function handleJoin(req: http.IncomingMessage, res: http.ServerResponse, u
     const status = await inviteStatus(groupStatus[1]);
     if (!status) send(res, 404, { ok: false, error: BAD_GROUP_LINK });
     else send(res, 200, { ok: true, ...status });
+    return true;
+  }
+  // The joiners' numbers, for the host's laptop only. Its key travels in a header, never the URL.
+  const groupPeople = /^\/web\/groups\/([A-HJ-NP-Z2-9]{8})\/people$/.exec(p);
+  if (groupPeople && req.method === 'GET') {
+    const r = await invitePeople(groupPeople[1], String(req.headers['x-sticky-host'] ?? ''));
+    if (!r) send(res, 403, { ok: false, error: 'Only the laptop that made this group can see its numbers.' });
+    else send(res, 200, { ok: true, line: config.line, ...r });
     return true;
   }
   if (p === '/web/join' && req.method === 'GET') {
