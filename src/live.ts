@@ -54,12 +54,39 @@ const pct = (n: number) => `${Math.round(n * 100)}%`;
 const colorOf = (peer: string) => COLORS[parseInt(peer.slice(0, 6), 16) % COLORS.length];
 const cleanName = (raw: unknown) => String(raw ?? '').replace(/\s+/g, ' ').trim().slice(0, 40);
 
-function iceServers(): unknown[] {
+const STUN = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
+let turnCache: { servers: unknown[]; until: number } | null = null;
+
+/**
+ * ICE servers for the room. STUN alone can't connect two people on networks that block direct
+ * peer-to-peer video (venue/campus/office Wi-Fi); a TURN relay can. Either STICKY_ICE_SERVERS (JSON), or
+ * Cloudflare TURN short-lived credentials from STICKY_TURN_KEY_ID + STICKY_TURN_KEY_TOKEN (cached).
+ */
+async function iceServers(): Promise<unknown[]> {
   try {
     const custom = JSON.parse(process.env.STICKY_ICE_SERVERS || 'null');
     if (Array.isArray(custom) && custom.length) return custom;
   } catch { /* fall through */ }
-  return [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
+  const keyId = process.env.STICKY_TURN_KEY_ID;
+  const token = process.env.STICKY_TURN_KEY_TOKEN;
+  if (!keyId || !token) return STUN;
+  if (turnCache && turnCache.until > Date.now()) return turnCache.servers;
+  try {
+    const res = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${encodeURIComponent(keyId)}/credentials/generate`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ttl: 86_400 }),
+      signal: AbortSignal.timeout(5_000),
+    });
+    const body = await res.json() as any;
+    if (!res.ok || !body.iceServers) throw new Error(`HTTP ${res.status}`);
+    const relay = Array.isArray(body.iceServers) ? body.iceServers : [body.iceServers];
+    turnCache = { servers: [...STUN, ...relay], until: Date.now() + 12 * 3600_000 };
+    return turnCache.servers;
+  } catch (err) {
+    log('live', { turn: 'credentials failed', error: errMsg(err) }, 'warn');
+    return STUN;
+  }
 }
 
 /** E.164 or null. Ten bare digits are read as a US number. */
@@ -312,15 +339,27 @@ const latestShown = (projectId: string) => one(
   [projectId],
 );
 
-async function handleSay(project: any, person: Person, peer: string, text: string, anchor: Anchor | null): Promise<void> {
+/**
+ * `maybe`: plain speech in the room, not addressed to Sticky ("put the blue flower there" with no "Sticky,").
+ * It's classified like a group chat message (chatter stays silent) and only a real request acts; then the
+ * room is told it was heard, so the speaker sees it land.
+ */
+async function handleSay(project: any, person: Person, peer: string, text: string, anchor: Anchor | null, maybe = false, reqId = ''): Promise<void> {
   if (NOTE.test(text)) {
     await createNote(project, person, text.replace(NOTE, '').trim() || text, anchor, []);
     return;
   }
   const latest = await latestShown(project.id);
-  if (!latest) return void reply(project.id, 'Still cutting the first version. Say it again once it shows up.');
-  const intent = await routeText({ text, state: project.state, hasCut: true }).catch(() => 'revise' as const);
-  log('live', { project: project.id, intent, from: person.handle, text: text.slice(0, 80), pointed: Boolean(anchor) });
+  if (!latest) {
+    if (!maybe) await reply(project.id, 'Still cutting the first version. Say it again once it shows up.');
+    return;
+  }
+  const intent = await routeText({ text, state: project.state, hasCut: true, isGroup: maybe }).catch(() => (maybe ? 'chatter' as const : 'revise' as const));
+  log('live', { project: project.id, intent, from: person.handle, text: text.slice(0, 80), pointed: Boolean(anchor), maybe: maybe || undefined });
+  if (maybe) {
+    if (intent !== 'revise' && intent !== 'why' && intent !== 'keep') return; // conversation, not a request
+    await emit(project.id, 'heard', { reqId, handle: person.handle, name: person.name, text, anchor });
+  }
   switch (intent) {
     case 'why':
       return void reply(project.id, whyThisCut({
@@ -365,6 +404,20 @@ async function queueEdit(project: any, person: Person, peer: string, text: strin
   // The reel being edited live is the host's current reel (otherwise the worker would supersede it).
   await q(`UPDATE sticky.threads SET current_project_id = $2 WHERE chat_id = $1 AND current_project_id IS DISTINCT FROM $2`, [project.chat_id, project.id]);
   await q(`UPDATE sticky.projects SET state = 'delivered' WHERE id = $1 AND state IN ('closed','failed')`, [project.id]);
+  // A follow-up from the same person before their last request has started ("actually, put it there")
+  // refines that request instead of stacking a second edit (two blue flowers).
+  const folded = await one(
+    `UPDATE sticky.jobs SET direction = direction || E'\n' || $2,
+       anchor = CASE WHEN $3::jsonb ? 'x' THEN $3::jsonb || jsonb_build_object('said', anchor->>'said' || ' / ' || ($3::jsonb->>'said')) ELSE anchor END
+     WHERE id = (SELECT id FROM sticky.jobs WHERE project_id = $1 AND channel = 'live' AND status = 'queued' AND author_handle = $4
+                 AND created_at > now() - interval '30 seconds' ORDER BY created_at DESC LIMIT 1)
+     RETURNING id`,
+    [project.id, direction, JSON.stringify(stored), person.handle],
+  );
+  if (folded) {
+    await reply(project.id, `Updated ${person.name}'s pending edit: “${text}”.`, { jobId: folded.id });
+    return;
+  }
   const job = await one(
     `INSERT INTO sticky.jobs (project_id, kind, direction, inbound_at, channel, author_handle, author_name, anchor)
      VALUES ($1, 'revise', $2, now(), 'live', $3, $4, $5) RETURNING id`,
@@ -488,7 +541,7 @@ async function liveState(project: any, role: 'host' | 'guest'): Promise<unknown>
     role,
     host: { phoneOnFile: Boolean(project.host_phone), phoneLast4: role === 'host' && project.host_phone ? String(project.host_phone).slice(-4) : null },
     guestLink: `/live/${project.live_token}`,
-    iceServers: iceServers(),
+    iceServers: await iceServers(),
     versions: versions.map((v: any) => ({
       versionNo: v.version_no,
       url: `/v/${v.link_token}.mp4`,
@@ -556,6 +609,9 @@ async function stream(req: http.IncomingMessage, res: http.ServerResponse, url: 
   const you = { peer, handle: person.handle, name: person.name, role, color };
   res.write(`data: ${JSON.stringify({ type: 'hello', payload: { you, others: others.map(peerOf) } })}\n\n`);
   if (row?.inserted) await emit(project.id, 'join', you, { from: peer });
+  // A reload is a new tab id: retire this person's older tabs at once (no ghost tile for ~30 s).
+  const stale = await q(`DELETE FROM sticky.live_presence WHERE project_id = $1 AND handle = $2 AND peer_id <> $3 RETURNING peer_id`, [project.id, person.handle, peer]);
+  for (const s of stale) await emit(project.id, 'leave', { peer: s.peer_id }, { from: s.peer_id });
 
   // A reconnect (Cloud Run ends long requests) replays what this tab missed.
   const lastId = Number(req.headers['last-event-id'] ?? 0);
@@ -605,7 +661,7 @@ export async function handleLive(req: http.IncomingMessage, res: http.ServerResp
     return true;
   }
 
-  const m = /^\/live-api\/([a-f0-9]{32})\/(state|stream|join|leave|signal|say|note|contact|invite|phone|finish)$/.exec(p);
+  const m = /^\/live-api\/([a-f0-9]{32})\/(state|stream|join|leave|signal|say|note|contact|invite|phone|finish|diag)$/.exec(p);
   if (!m) return false;
   const [, token, action] = m;
   const project = await projectByToken(token);
@@ -638,6 +694,13 @@ export async function handleLive(req: http.IncomingMessage, res: http.ServerResp
       send(res, 200, { ok: true, handle: person!.handle, role });
       return true;
     }
+    // The page reports how a video connection went (candidate types), so network blocks show in the logs.
+    case 'diag': {
+      const pick = (v: unknown) => String(v ?? '').replace(/[^\w ,:.-]/g, '').slice(0, 120);
+      log('live', { project: project.id, diag: pick(body.state), from: pick(body.from), to: pick(body.to), local: pick(body.local), remote: pick(body.remote), pair: pick(body.pair), tries: Number(body.tries) || undefined });
+      send(res, 200, { ok: true });
+      return true;
+    }
     case 'leave': {
       const peer = String(body.peer ?? '');
       const gone = await q(`DELETE FROM sticky.live_presence WHERE peer_id = $1 AND project_id = $2 RETURNING peer_id`, [peer, project.id]);
@@ -657,9 +720,12 @@ export async function handleLive(req: http.IncomingMessage, res: http.ServerResp
       if (!person || !text) { send(res, 400, { ok: false }); return true; }
       const anchor = anchorOf(body.anchor);
       const peer = ID.test(String(body.peer)) ? String(body.peer) : null;
-      await emit(project.id, 'heard', { reqId: String(body.reqId ?? '').slice(0, 40), handle: person.handle, name: person.name, text, anchor }, { from: peer });
+      const reqId = String(body.reqId ?? '').slice(0, 40);
+      const maybe = body.maybe === true;
+      // Addressed to Sticky: the room sees it at once. Plain speech is announced only if it turns out to be a request.
+      if (!maybe) await emit(project.id, 'heard', { reqId, handle: person.handle, name: person.name, text, anchor }, { from: peer });
       send(res, 202, { ok: true });
-      void handleSay(project, person, peer ?? '', text, anchor).catch((err) => {
+      void handleSay(project, person, peer ?? '', text, anchor, maybe, reqId).catch((err) => {
         log('live', { project: project.id, say: 'failed', error: errMsg(err) }, 'error');
         void reply(project.id, `I couldn't take that one (${errMsg(err).slice(0, 120)}).`);
       });
