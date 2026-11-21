@@ -46,6 +46,7 @@
     .topbar { height: var(--top); display: flex; align-items: center; gap: 10px; padding: 0 20px; max-width: 1180px; margin: 0 auto; }
     .topbar .mark { height: 28px; width: auto; display: block; }
     .topbar .spacer { flex: 1; }
+    .live-dot { width: 8px; height: 8px; border-radius: 50%; background: #E4572E; animation: pulse 1.6s ease-in-out infinite; }
 
     /* ---------- landing: the logo and one place to drop ---------- */
     .landing { min-height: calc(100dvh - var(--top)); display: grid; place-content: center; justify-items: center; gap: clamp(12px, 4vh, 40px); padding: 0 20px calc(var(--top) * .6); }
@@ -190,7 +191,7 @@
       .addlabel { display: none; }
     }
     @media (prefers-reduced-motion: reduce) {
-      *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+      *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
       .bead { display: none; }
     }
   </style>
@@ -200,6 +201,7 @@
     <a class="reels-only" href="/" aria-label="sticky"><img class="mark" src="/assets/sticky-mark.svg" alt="sticky" width="62" height="28" /></a>
     <span class="spacer"></span>
     <button class="btn reels-only" id="addBtn" type="button" aria-label="Add clips">+<span class="addlabel"> Add clips</span></button>
+    <a class="btn" href="/live"><span class="live-dot" aria-hidden="true"></span>Live</a>
     <a class="btn ink" href="/join">Text it</a>
   </header>
 
