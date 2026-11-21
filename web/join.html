@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>sticky — text your footage</title>
+  <meta name="description" content="Add your number, text Sticky once, then send any clip to get a reel back in iMessage. Works in group chats too." />
+  <meta name="theme-color" content="#FDFB04" />
+  <link rel="icon" href="/assets/sticky-mark.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@1,900&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --yellow: #FDFB04; --ink: #361118; --ink-2: rgba(54, 17, 24, .72); --ink-3: rgba(54, 17, 24, .5);
+      --line: rgba(54, 17, 24, .12); --cream: #FFFEF0; --ok: #1F7A4D; --warn: #A23B1B;
+      --shadow: 0 1px 0 rgba(54, 17, 24, .05), 0 28px 60px -32px rgba(54, 17, 24, .45);
+      --taffy: cubic-bezier(.34, 1.56, .64, 1); --ease: cubic-bezier(.22, 1, .36, 1);
+      --display: "Playfair Display", "Times New Roman", serif;
+      --ui: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--ui); background: var(--yellow); color: var(--ink); line-height: 1.5; -webkit-font-smoothing: antialiased; min-height: 100vh; }
+    a { color: inherit; }
+    button { font: inherit; cursor: pointer; border: 0; }
+    :focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; border-radius: 8px; }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 22px 20px 48px; }
+    .top { display: flex; justify-content: space-between; align-items: center; }
+    .top img { height: 30px; width: auto; display: block; }
+    .top a.back { font-size: 13px; font-weight: 600; text-decoration-thickness: 2px; text-underline-offset: 3px; }
+    .hero { text-align: center; margin: 34px auto 26px; max-width: 640px; }
+    .hero img { width: min(380px, 78vw); height: auto; display: block; margin: 0 auto 18px; }
+    h1 { font-family: var(--display); font-style: italic; font-weight: 900; font-size: clamp(28px, 4.6vw, 44px); line-height: 1.06; letter-spacing: -.01em; }
+    .hero p { margin-top: 12px; color: var(--ink-2); font-size: 16px; }
+    .grid { display: grid; grid-template-columns: 1.15fr .85fr; gap: 22px; align-items: start; }
+    .card { background: #fff; border: 2px solid var(--ink); border-radius: 28px; box-shadow: var(--shadow); padding: 26px; }
+    .label { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 10px; }
+    .steps { display: grid; gap: 14px; margin-bottom: 22px; counter-reset: step; }
+    .step { display: grid; grid-template-columns: 34px 1fr; gap: 12px; align-items: start; font-size: 15px; }
+    .step::before { counter-increment: step; content: counter(step); width: 30px; height: 30px; border-radius: 50%; background: var(--yellow); border: 2px solid var(--ink); display: grid; place-items: center; font-weight: 700; font-size: 14px; }
+    .step b { display: block; }
+    .step span { color: var(--ink-2); font-size: 14px; }
+    form { display: flex; gap: 10px; }
+    input { flex: 1; min-width: 0; border: 1.5px solid var(--line); border-radius: 14px; padding: 14px 16px; font: inherit; font-size: 17px; color: var(--ink); font-variant-numeric: tabular-nums; }
+    input:focus { outline: none; border-color: var(--ink); box-shadow: 0 0 0 4px rgba(253, 251, 4, .6); }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 14px 20px; border-radius: 14px; font-weight: 700; font-size: 15px; background: var(--ink); color: var(--yellow); text-decoration: none; white-space: nowrap; transition: transform .35s var(--taffy); }
+    .btn:hover { transform: translateY(-2px); }
+    .btn:active { transform: translateY(1px) scale(.98); }
+    .btn[disabled] { opacity: .5; pointer-events: none; }
+    .btn.big { width: 100%; padding: 18px; font-size: 17px; margin-top: 14px; }
+    .msg { margin-top: 12px; font-size: 14px; min-height: 21px; }
+    .msg.err { color: var(--warn); font-weight: 600; }
+    .done { display: none; margin-top: 18px; padding: 16px; border-radius: 18px; background: var(--yellow); border: 2px solid var(--ink); }
+    .done.show { display: block; animation: pop .5s var(--taffy); }
+    @keyframes pop { from { transform: scale(.96); opacity: 0 } to { transform: none; opacity: 1 } }
+    .done h3 { font-family: var(--display); font-style: italic; font-weight: 900; font-size: 22px; }
+    .done p { font-size: 14px; margin-top: 4px; }
+    .meter { margin-top: 18px; display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--ink-2); }
+    .meter .bar { flex: 1; height: 8px; border-radius: 8px; background: var(--line); overflow: hidden; }
+    .meter .bar i { display: block; height: 100%; background: var(--ink); border-radius: 8px; width: 0; transition: width .6s var(--ease); }
+    .side { text-align: center; }
+    .qr { width: 100%; max-width: 260px; aspect-ratio: 1; border-radius: 18px; border: 2px solid var(--ink); display: block; margin: 0 auto; background: var(--yellow); }
+    .side p { font-size: 14px; color: var(--ink-2); margin-top: 12px; }
+    .side .line { font-family: var(--display); font-style: italic; font-weight: 900; font-size: 26px; margin-top: 6px; color: var(--ink); }
+    .group { margin-top: 18px; text-align: left; font-size: 13px; color: var(--ink-2); border-top: 1px solid var(--line); padding-top: 14px; }
+    .group b { color: var(--ink); }
+    footer { text-align: center; color: var(--ink-2); font-size: 12px; margin-top: 34px; }
+    @media (max-width: 760px) {
+      .grid { grid-template-columns: 1fr; }
+      .side .qr-wrap { display: none; }
+      form { flex-direction: column; }
+      .card { padding: 20px; border-radius: 24px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <a href="/" aria-label="sticky home"><img src="/assets/sticky-mark.svg" alt="sticky" width="66" height="30" /></a>
+      <a class="back" href="/">Use it in the browser instead</a>
+    </div>
+
+    <section class="hero">
+      <img src="/assets/sticky-logo.gif" alt="" width="760" height="407" />
+      <h1>Text it. Get the reel back.</h1>
+      <p>Send any clip to Sticky in iMessage, alone or in a group chat, and it texts back a reel cut for what's working this week. Text or voice-note changes anytime.</p>
+    </section>
+
+    <div class="grid">
+      <section class="card" aria-labelledby="joinTitle">
+        <div class="label" id="joinTitle">Get on the line, about 10 seconds</div>
+        <div class="steps">
+          <div class="step"><div><b>Add your number</b><span>Sticky runs on a free line that holds a short list of people.</span></div></div>
+          <div class="step"><div><b>Text Sticky once</b><span>One tap below. After that it can text you back.</span></div></div>
+          <div class="step"><div><b>Send footage</b><span>No caption needed. Reply with changes, or a voice note.</span></div></div>
+        </div>
+        <form id="form" autocomplete="on">
+          <input id="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="(347) 555-0100" aria-label="Your phone number" required />
+          <button class="btn" id="go" type="submit">Add me</button>
+        </form>
+        <div class="msg" id="msg" role="status" aria-live="polite"></div>
+        <div class="done" id="done">
+          <h3>You're on. Now text Sticky once.</h3>
+          <p>That first message is what lets Sticky reply. Then send any clip.</p>
+          <a class="btn big" id="smsBtn" href="#">Text Sticky</a>
+        </div>
+        <div class="meter" aria-label="Spots used"><span id="used">…</span><span class="bar"><i id="usedBar"></i></span><span id="limit"></span></div>
+      </section>
+
+      <aside class="card side">
+        <div class="qr-wrap">
+          <div class="label">On a laptop? Scan with your phone</div>
+          <img class="qr" src="/join/qr.png" alt="QR code to this page" width="260" height="260" />
+        </div>
+        <p>Sticky's number</p>
+        <div class="line" id="line">…</div>
+        <div class="group">
+          <b>Group chats:</b> add Sticky's number to your group. When anyone already on the list texts there, Sticky adds the rest of the group and sends that person a link to forward. Once everyone has tapped it, anyone can edit the reel.
+        </div>
+      </aside>
+    </div>
+
+    <footer>Sticky only answers the people on its list. Your number is used for Sticky's replies, nothing else.</footer>
+  </div>
+
+  <script>
+  (() => {
+    const $ = (id) => document.getElementById(id);
+    const pretty = (l) => (l || '').replace(/^\+1(\d{3})(\d{3})(\d{4})$/, '+1 ($1) $2-$3');
+    let sms = '#';
+    const meter = (used, limit) => {
+      $('used').textContent = `${used} of ${limit} spots used`;
+      $('limit').textContent = used >= limit ? 'Full' : `${limit - used} left`;
+      $('usedBar').style.width = `${Math.min(100, Math.round((used / limit) * 100))}%`;
+    };
+    fetch('/web/join').then((r) => r.json()).then((s) => {
+      sms = s.sms; $('smsBtn').href = sms; $('line').textContent = pretty(s.line); meter(s.used, s.limit);
+    }).catch(() => {});
+    $('form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const phone = $('phone').value.trim();
+      if (!phone) return;
+      $('go').disabled = true; $('msg').className = 'msg'; $('msg').textContent = 'Adding you…';
+      try {
+        const res = await fetch('/web/join', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone }) });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body.error || 'Something went wrong.');
+        $('msg').textContent = body.status === 'already' ? 'You were already on the list.' : 'Added.';
+        if (body.sms) { sms = body.sms; $('smsBtn').href = sms; }
+        $('done').classList.add('show');
+        if (Number.isFinite(body.used)) meter(body.used, body.limit);
+      } catch (err) {
+        $('msg').className = 'msg err'; $('msg').textContent = err.message;
+      } finally {
+        $('go').disabled = false;
+      }
+    });
+  })();
+  </script>
+</body>
+</html>

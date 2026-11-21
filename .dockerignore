@@ -1,0 +1,8 @@
+node_modules
+.data
+.env
+.env.*
+.git
+*.mp4
+*.mov
+!web/*.mp4

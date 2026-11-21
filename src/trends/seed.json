@@ -1,0 +1,254 @@
+{
+  "version": 1,
+  "refreshedAt": "2026-11-21T00:00:00.000Z",
+  "origin": "seed",
+  "market": "US/en",
+  "sources": [
+    { "id": "later", "url": "https://later.com/blog/instagram-reels-trends/", "ok": true, "fetchedAt": "2026-11-21T19:00:00.000Z", "entries": 4 },
+    { "id": "newengen", "url": "https://newengen.com/insights/instagram-trends/", "ok": true, "fetchedAt": "2026-11-21T19:00:00.000Z", "pageUpdated": "2026-11-20", "entries": 3 }
+  ],
+  "techniques": [
+    {
+      "id": "newengen:christmas-wrapping-paper-reveal",
+      "formatKey": "christmas-wrapping-paper-reveal",
+      "title": "Christmas Wrapping Paper Reveal",
+      "source": "newengen",
+      "sourceName": "New Engen",
+      "url": "https://newengen.com/insights/instagram-trends/",
+      "kind": "dated",
+      "observedOn": "2026-11-20",
+      "dateBasis": "page_updated",
+      "dateText": "November 20, 2026",
+      "summary": "Paper covers the subject and gets torn open on camera, so the reveal itself is the announcement.",
+      "requires": ["something wrapped or covered in paper", "the paper being torn or opened on camera", "the object visible once the paper is gone"],
+      "ops": {
+        "opening": "start on the first tear; drop the setup, taping and fiddling before it",
+        "order": "tear, then reveal, in the order it happened",
+        "pacing": "6-12 seconds; quick through the tear, a held beat on the reveal",
+        "audio": "keep the paper-tearing sound",
+        "ending": "hold on the revealed object for about 1.5 seconds"
+      },
+      "renderable": true
+    },
+    {
+      "id": "newengen:paid-me-no-mind",
+      "formatKey": "paid-me-no-mind",
+      "title": "Paid Me No Mind",
+      "source": "newengen",
+      "sourceName": "New Engen",
+      "url": "https://newengen.com/insights/instagram-trends/",
+      "kind": "dated",
+      "observedOn": "2026-11-20",
+      "dateBasis": "page_updated",
+      "dateText": "November 20, 2026",
+      "summary": "The same short line delivered again and again, each take stressing a different word with a bigger reaction.",
+      "requires": ["one person saying the same short line two or more times", "the reaction growing from take to take"],
+      "ops": {
+        "opening": "the first, most restrained take",
+        "order": "takes in escalating order",
+        "pacing": "8-15 seconds; one beat per take, no gaps between",
+        "audio": "keep every spoken take",
+        "ending": "the biggest reaction"
+      },
+      "renderable": true
+    },
+    {
+      "id": "newengen:i-feel-like-i-havent-done-much-this-year",
+      "formatKey": "i-feel-like-i-havent-done-much-this-year",
+      "title": "I Feel Like I Haven't Done Much This Year",
+      "source": "newengen",
+      "sourceName": "New Engen",
+      "url": "https://newengen.com/insights/instagram-trends/",
+      "kind": "dated",
+      "observedOn": "2026-11-20",
+      "dateBasis": "page_updated",
+      "dateText": "November 20, 2026",
+      "summary": "A deflated opening line answered by a run of clips from across the year that prove otherwise.",
+      "requires": ["a low-key opening line or shot about not having done much", "many clips from different times or places"],
+      "ops": {
+        "opening": "the deflated line or shot",
+        "order": "the clips in chronological order",
+        "pacing": "about one second per clip, 12-20 seconds total",
+        "audio": "keep the opening line",
+        "ending": "the strongest moment of the year"
+      },
+      "renderable": true
+    },
+    {
+      "id": "later:i-feel-like-i-havent-done-much-this-year",
+      "formatKey": "i-feel-like-i-havent-done-much-this-year",
+      "title": "I feel like I haven't done much this year",
+      "source": "later",
+      "sourceName": "Later",
+      "url": "https://later.com/blog/instagram-reels-trends/",
+      "kind": "dated",
+      "observedOn": "2026-11-20",
+      "dateBasis": "entry",
+      "dateText": "November 20, 2026",
+      "summary": "Open on the doubt, then fire off quick month-by-month clips as receipts.",
+      "requires": ["a low-key opening line or shot about not having done much", "many clips from different times or places"],
+      "ops": {
+        "opening": "the doubtful line",
+        "order": "receipts in time order",
+        "pacing": "rapid cuts, about one second each",
+        "audio": "keep the opening line",
+        "ending": "the proudest clip"
+      },
+      "renderable": true
+    },
+    {
+      "id": "later:get-up-diva",
+      "formatKey": "get-up-diva",
+      "title": "Get up, diva",
+      "source": "later",
+      "sourceName": "Later",
+      "url": "https://later.com/blog/instagram-reels-trends/",
+      "kind": "dated",
+      "observedOn": "2026-11-20",
+      "dateBasis": "entry",
+      "dateText": "November 20, 2026",
+      "summary": "A setback on camera, then the shake-it-off comeback.",
+      "requires": ["a visible setback: a slip, a mess, a failed attempt", "a recovery or comeback after it"],
+      "ops": {
+        "opening": "open on the setback itself",
+        "order": "setback, then recovery",
+        "pacing": "a fast cut from the fall to getting back up",
+        "audio": "keep the original sound of the moment",
+        "ending": "land on the recovery"
+      },
+      "renderable": true
+    },
+    {
+      "id": "later:outfit-transition",
+      "formatKey": "outfit-transition",
+      "title": "Outfit transition",
+      "source": "later",
+      "sourceName": "Later",
+      "url": "https://later.com/blog/instagram-reels-trends/",
+      "kind": "dated",
+      "observedOn": "2026-11-13",
+      "dateBasis": "entry",
+      "dateText": "November 13, 2026",
+      "summary": "Camera stays put; one simple repeated move swaps one look for the next.",
+      "requires": ["a camera held in one spot", "the same person in two or more looks or states", "the same simple movement repeated in each"],
+      "ops": {
+        "opening": "the first look, already mid-movement",
+        "order": "one look per beat",
+        "pacing": "cut each look at the same point of the repeated movement (match cut)",
+        "audio": "keep the original audio",
+        "ending": "the strongest look, held a beat longer"
+      },
+      "renderable": true
+    },
+    {
+      "id": "later:the-process",
+      "formatKey": "the-process",
+      "title": "The process",
+      "source": "later",
+      "sourceName": "Later",
+      "url": "https://later.com/blog/instagram-reels-trends/",
+      "kind": "dated",
+      "observedOn": "2026-09-18",
+      "dateBasis": "entry",
+      "dateText": "September 18, 2026",
+      "summary": "Walk through the tools and steps behind something, then land on the finished result.",
+      "requires": ["steps of making or doing something", "the finished result on camera"],
+      "ops": {
+        "opening": "the first decisive step",
+        "order": "steps in order, trimmed to their key frames",
+        "pacing": "short steps, longer finish",
+        "audio": "keep process sounds",
+        "ending": "the finished result"
+      },
+      "renderable": true
+    },
+    {
+      "id": "evergreen:strong-line-first",
+      "formatKey": "strong-line-first",
+      "title": "Open on the strongest line",
+      "source": "evergreen",
+      "sourceName": "New Engen evergreen hooks guidance",
+      "url": "https://newengen.com/insights/instagram-trends/",
+      "kind": "evergreen",
+      "observedOn": null,
+      "dateBasis": null,
+      "dateText": null,
+      "summary": "When someone is talking, the most specific or surprising sentence they say becomes the first thing heard, then the context that makes it land.",
+      "requires": ["someone speaking on camera", "one line that is striking, specific or emotional"],
+      "ops": {
+        "opening": "the strongest verbatim line, from its first word",
+        "order": "then the context that gives that line its meaning",
+        "pacing": "remove dead air and false starts between thoughts",
+        "audio": "keep speech intelligible; never cut mid-word",
+        "ending": "a complete thought"
+      },
+      "renderable": true
+    },
+    {
+      "id": "evergreen:realization-hook",
+      "formatKey": "realization-hook",
+      "title": "Open on the moment of change",
+      "source": "evergreen",
+      "sourceName": "New Engen evergreen hooks guidance",
+      "url": "https://newengen.com/insights/instagram-trends/",
+      "kind": "evergreen",
+      "observedOn": null,
+      "dateBasis": null,
+      "dateText": null,
+      "summary": "Start on the moment something starts to change and hold back the result, so the viewer stays to see it.",
+      "requires": ["a clear moment where something changes, opens or is revealed"],
+      "ops": {
+        "opening": "the instant just before the change",
+        "order": "build-up, then the change",
+        "pacing": "keep the build-up short",
+        "audio": "keep the original sound",
+        "ending": "the result, held on screen"
+      },
+      "renderable": true
+    },
+    {
+      "id": "evergreen:close-up-to-wide",
+      "formatKey": "close-up-to-wide",
+      "title": "Close-up to wide",
+      "source": "evergreen",
+      "sourceName": "New Engen evergreen camera guidance",
+      "url": "https://newengen.com/insights/instagram-trends/",
+      "kind": "evergreen",
+      "observedOn": null,
+      "dateBasis": null,
+      "dateText": null,
+      "summary": "A tight detail first creates a small mystery that the wider shot resolves.",
+      "requires": ["a tight detail shot (hands, texture, label)", "a wider shot of the same subject or scene"],
+      "ops": {
+        "opening": "the tight detail",
+        "order": "detail, then wide",
+        "pacing": "two to three seconds on the detail",
+        "audio": "keep the original sound",
+        "ending": "the wide shot"
+      },
+      "renderable": true
+    },
+    {
+      "id": "evergreen:cut-to-the-action",
+      "formatKey": "cut-to-the-action",
+      "title": "Cut the setup, open on the action",
+      "source": "evergreen",
+      "sourceName": "New Engen evergreen hooks guidance",
+      "url": "https://newengen.com/insights/instagram-trends/",
+      "kind": "evergreen",
+      "observedOn": null,
+      "dateBasis": null,
+      "dateText": null,
+      "summary": "The first frame is already the interesting part; setup, idle time and dead air are removed.",
+      "requires": ["any footage with an action or moment worth watching"],
+      "ops": {
+        "opening": "the first frame of real action",
+        "order": "the action in the order it happened",
+        "pacing": "drop idle time and dead air",
+        "audio": "keep the original sound",
+        "ending": "the payoff of the action"
+      },
+      "renderable": true
+    }
+  ]
+}

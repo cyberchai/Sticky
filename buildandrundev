@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+# Build and run Sticky locally so you can use the web page at http://localhost:8787.
+#
+# Isolated from the deployed service: local Postgres (.data/pg on :5433), local-disk storage
+# under .data, and the worker ON so uploads actually get cut. Gemini/Vertex credentials still
+# come from .env. Re-running restarts a Sticky server already on the port.
+#
+#   ./buildandrundev            install deps if needed, typecheck, start, open the browser
+#   ./buildandrundev --gcs      keep STICKY_BUCKET from .env (Omni visual edits need GCS)
+#   ./buildandrundev --no-open  don't open the browser
+#   PORT=8790 ./buildandrundev  use another port
+set -euo pipefail
+cd "$(dirname "$0")"
+ROOT="$PWD"
+
+USE_GCS=0
+OPEN_BROWSER=1
+for arg in "$@"; do
+  case "$arg" in
+    --gcs) USE_GCS=1 ;;
+    --no-open) OPEN_BROWSER=0 ;;
+    -h|--help) sed -n '2,11p' "$ROOT/$(basename "$0")" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "unknown option: $arg (try --help)" >&2; exit 2 ;;
+  esac
+done
+
+PORT="${PORT:-8787}"
+PG_DIR=.data/pg
+PG_PORT=5433
+PG_USER=sticky
+PG_DB=sticky
+
+say() { printf '\033[1;35m[dev]\033[0m %s\n' "$*"; }
+die() { printf '\033[1;31m[dev]\033[0m %s\n' "$*" >&2; exit 1; }
+
+# --- prerequisites -------------------------------------------------------------------------
+for bin in node npm ffmpeg ffprobe pg_ctl initdb createdb psql lsof; do
+  command -v "$bin" >/dev/null || die "missing '$bin' (brew install node ffmpeg postgresql@15)"
+done
+node_major="$(node -p 'process.versions.node.split(".")[0]')"
+[ "$node_major" -ge 22 ] || die "node >= 22 required (have $(node -v))"
+
+if [ ! -f .env ]; then
+  cp .env.example .env
+  say "created .env from .env.example; fill in Gemini/GCP values for real cuts"
+fi
+
+# --- build -------------------------------------------------------------------------------
+if [ ! -d node_modules ] || [ package-lock.json -nt node_modules/.package-lock.json ]; then
+  say "installing dependencies"
+  npm install
+fi
+say "typechecking"
+npm run -s typecheck
+
+# --- local Postgres ----------------------------------------------------------------------
+mkdir -p .data
+if [ ! -f "$PG_DIR/PG_VERSION" ]; then
+  say "initializing local Postgres in $PG_DIR"
+  initdb -D "$PG_DIR" -U "$PG_USER" --auth=trust >/dev/null
+fi
+if ! pg_ctl -D "$PG_DIR" status >/dev/null 2>&1; then
+  say "starting local Postgres on :$PG_PORT"
+  pg_ctl -D "$PG_DIR" -o "-p $PG_PORT -k /tmp" -l .data/pg.log -w start >/dev/null
+fi
+if ! psql -h localhost -p "$PG_PORT" -U "$PG_USER" -d postgres -tAc \
+    "SELECT 1 FROM pg_database WHERE datname = '$PG_DB'" | grep -q 1; then
+  createdb -h localhost -p "$PG_PORT" -U "$PG_USER" "$PG_DB"
+fi
+
+# --- free the port -----------------------------------------------------------------------
+pid="$(lsof -nP -t -iTCP:"$PORT" -sTCP:LISTEN | head -1 || true)"
+if [ -n "$pid" ]; then
+  cmd="$(ps -o command= -p "$pid" || true)"
+  cwd="$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' || true)"
+  if [[ "$cmd" == *src/server.ts* && "$cwd" == "$ROOT" ]]; then
+    say "stopping the Sticky server already on :$PORT (pid $pid)"
+    kill "$pid"
+    for _ in $(seq 1 50); do
+      kill -0 "$pid" 2>/dev/null || break
+      sleep 0.1
+    done
+  else
+    die "port $PORT is in use by pid $pid ($cmd); stop it or run with PORT=<other>"
+  fi
+fi
+
+# --- run ---------------------------------------------------------------------------------
+URL="http://localhost:$PORT"
+
+# Already-set variables win over .env (dotenv doesn't override), so these take precedence.
+export PORT
+export DATABASE_URL="postgres://$PG_USER@localhost:$PG_PORT/$PG_DB"
+export STICKY_WORKER=on
+export STICKY_PUBLIC_BASE_URL="$URL"
+if [ "$USE_GCS" = 1 ]; then
+  storage='gs://$STICKY_BUCKET'
+else
+  export STICKY_BUCKET=""
+  storage=local-disk
+fi
+
+if [ "$OPEN_BROWSER" = 1 ]; then
+  (
+    for _ in $(seq 1 120); do
+      if curl -fsS "$URL/health" >/dev/null 2>&1; then open "$URL"; exit 0; fi
+      sleep 0.5
+    done
+  ) &
+fi
+
+say "Sticky → $URL  (db: local :$PG_PORT, storage: $storage, Ctrl-C to stop)"
+exec ./node_modules/.bin/tsx src/server.ts

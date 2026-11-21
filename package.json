@@ -1,0 +1,38 @@
+{
+  "name": "sticky",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Text raw footage over iMessage, get back a trend-informed Reel.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "tsx src/server.ts",
+    "start": "tsx src/server.ts",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "migrate": "tsx scripts/migrate.ts",
+    "trends:prime": "tsx scripts/trends-prime.ts",
+    "linq:check": "tsx scripts/linq-check.ts",
+    "probe:gemini": "tsx scripts/probe-gemini.ts",
+    "replay": "tsx scripts/replay-event.ts"
+  },
+  "dependencies": {
+    "@google-cloud/cloud-sql-connector": "^1.10.0",
+    "@google-cloud/storage": "^7.22.0",
+    "@google/genai": "^2.0.1",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@types/qrcode": "^1.5.6",
+    "dotenv": "^17.4.2",
+    "google-auth-library": "^10.9.1",
+    "pg": "^8.20.0",
+    "qrcode": "^1.5.4",
+    "tsx": "^4.20.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "@types/pg": "^8.20.0",
+    "typescript": "^5.9.3"
+  }
+}

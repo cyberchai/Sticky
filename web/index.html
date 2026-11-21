@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>sticky — drop footage, get a reel</title>
+  <meta name="description" content="Drop raw footage or text it. Sticky watches, finds the strongest moment, and cuts a Reel using what's working on Instagram this week." />
+  <meta name="theme-color" content="#FDFB04" />
+  <link rel="icon" href="/assets/sticky.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@1,800;1,900&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --yellow: #FDFB04;
+      --ink: #361118;
+      --ink-2: rgba(54, 17, 24, 0.72);
+      --ink-3: rgba(54, 17, 24, 0.5);
+      --line: rgba(54, 17, 24, 0.12);
+      --line-strong: rgba(54, 17, 24, 0.85);
+      --card: #FFFFFF;
+      --cream: #FFFEF0;
+      --ok: #1F7A4D;
+      --warn: #A23B1B;
+      --r-xl: 30px;
+      --r-lg: 22px;
+      --r-md: 14px;
+      --r-sm: 10px;
+      --shadow: 0 1px 0 rgba(54, 17, 24, 0.05), 0 28px 60px -32px rgba(54, 17, 24, 0.45);
+      --shadow-sm: 0 1px 0 rgba(54, 17, 24, 0.05), 0 10px 24px -16px rgba(54, 17, 24, 0.35);
+      --taffy: cubic-bezier(0.34, 1.56, 0.64, 1);
+      --ease: cubic-bezier(0.22, 1, 0.36, 1);
+      --display: "Playfair Display", "Times New Roman", serif;
+      --ui: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      font-family: var(--ui);
+      background: var(--yellow);
+      color: var(--ink);
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    a { color: inherit; }
+    button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; }
+    :focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; border-radius: 8px; }
+
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px; }
+
+    /* ---------- top bar ---------- */
+    .topbar { display: flex; align-items: center; justify-content: space-between; padding: 22px 0 0; gap: 12px; }
+    .topbar .mark { height: 30px; width: auto; display: block; }
+    .pill {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 9px 14px; border-radius: 999px;
+      background: var(--ink); color: var(--yellow);
+      font-size: 13px; font-weight: 600; text-decoration: none; white-space: nowrap;
+      transition: transform .35s var(--taffy);
+    }
+    .pill:hover { transform: translateY(-2px) scale(1.02); }
+    .pill svg { width: 15px; height: 15px; }
+
+    /* ---------- hero ---------- */
+    .hero { text-align: center; padding: 18px 0 10px; }
+    /* Transparent animated wordmark (keyed from sticky.mp4): no background box on any browser. */
+    .hero-logo {
+      width: min(520px, 86vw); height: auto; aspect-ratio: 760 / 407; margin: 34px auto 22px; display: block;
+      cursor: pointer; user-select: none; -webkit-user-drag: none;
+    }
+    .hero h1 {
+      font-family: var(--display); font-style: italic; font-weight: 900;
+      font-size: clamp(26px, 4.2vw, 40px); letter-spacing: -0.01em; line-height: 1.08;
+    }
+    .hero p { margin: 12px auto 0; max-width: 560px; color: var(--ink-2); font-size: 16px; }
+    .hero .sms { margin-top: 10px; font-size: 14px; color: var(--ink-2); }
+    .hero .sms a { font-weight: 700; color: var(--ink); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+
+    /* ---------- drop card ---------- */
+    .drop {
+      position: relative; margin: 26px auto 0; max-width: 760px;
+      background: var(--card); border: 2px solid var(--line-strong); border-radius: var(--r-xl);
+      box-shadow: var(--shadow); padding: 34px 28px 26px; text-align: center;
+      transition: transform .5s var(--taffy), box-shadow .4s var(--ease), border-color .3s;
+      overflow: hidden;
+    }
+    .drop.over { transform: translateY(-4px) scale(1.012); box-shadow: 0 36px 70px -30px rgba(54,17,24,.55); }
+    .drop .well {
+      border: 2px dashed var(--line); border-radius: var(--r-lg); padding: 30px 18px 26px;
+      background: var(--cream); cursor: pointer; transition: border-color .3s, background .3s;
+    }
+    .drop.over .well, .drop .well:hover { border-color: var(--ink); background: #FFFDE0; }
+    .drop .icon {
+      width: 58px; height: 58px; margin: 0 auto 14px; border-radius: 50%;
+      background: var(--yellow); border: 2px solid var(--ink); display: grid; place-items: center;
+      transition: transform .6s var(--taffy);
+    }
+    .drop.over .icon { transform: translateY(-6px) scale(1.08) rotate(-6deg); }
+    .drop h2 { font-family: var(--display); font-style: italic; font-weight: 900; font-size: 30px; line-height: 1.1; }
+    .drop .sub { margin-top: 6px; color: var(--ink-2); font-size: 14px; }
+    .drop .row { display: flex; gap: 10px; margin-top: 18px; align-items: stretch; }
+    .field {
+      flex: 1; min-width: 0; border: 1.5px solid var(--line); border-radius: var(--r-md);
+      padding: 12px 14px; font: inherit; font-size: 14px; color: var(--ink); background: #fff;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .field::placeholder { color: var(--ink-3); }
+    .field:focus { outline: none; border-color: var(--ink); box-shadow: 0 0 0 4px rgba(253, 251, 4, .55); }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 12px 18px; border-radius: var(--r-md); font-weight: 700; font-size: 14px;
+      border: 1.5px solid var(--ink); background: #fff; white-space: nowrap;
+      transition: transform .35s var(--taffy), background .2s, box-shadow .2s;
+    }
+    .btn:hover { transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+    .btn:active { transform: translateY(1px) scale(.98); }
+    .btn.primary { background: var(--ink); color: var(--yellow); }
+    .btn.yellow { background: var(--yellow); }
+    .btn[disabled] { opacity: .45; pointer-events: none; }
+    .hidden { display: none !important; }
+    .splat {
+      position: absolute; width: 22px; height: 22px; border-radius: 50%; background: var(--yellow);
+      border: 2px solid var(--ink); pointer-events: none; transform: translate(-50%, -50%) scale(0);
+      animation: splat .7s var(--taffy) forwards;
+    }
+    @keyframes splat { 0% { transform: translate(-50%,-50%) scale(0); opacity: 1 } 60% { transform: translate(-50%,-50%) scale(5); opacity: .9 } 100% { transform: translate(-50%,-50%) scale(6.5); opacity: 0 } }
+
+    .uploads { margin-top: 16px; display: grid; gap: 8px; text-align: left; }
+    .up { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; font-size: 13px; }
+    .up .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .up .pct { color: var(--ink-2); font-variant-numeric: tabular-nums; }
+    .bar { grid-column: 1 / -1; height: 6px; border-radius: 6px; background: var(--line); overflow: hidden; }
+    .bar i { display: block; height: 100%; width: 0; background: var(--ink); border-radius: 6px; transition: width .25s var(--ease); }
+
+    /* ---------- studio ---------- */
+    .studio { margin: 34px auto 0; max-width: 1040px; display: grid; grid-template-columns: 340px 1fr; gap: 22px; align-items: start; }
+    .panel { background: var(--card); border: 2px solid var(--line-strong); border-radius: var(--r-xl); box-shadow: var(--shadow); }
+    .player { padding: 14px; position: sticky; top: 16px; }
+    .screen {
+      position: relative; aspect-ratio: 9 / 16; border-radius: 20px; overflow: hidden; background: #140609;
+      display: grid; place-items: center;
+    }
+    .screen video { width: 100%; height: 100%; object-fit: cover; display: block; background: #000; }
+    .screen .wait { color: var(--yellow); text-align: center; padding: 24px; }
+    .screen .wait b { display: block; font-family: var(--display); font-style: italic; font-weight: 900; font-size: 26px; line-height: 1.15; }
+    .screen .wait span { display: block; margin-top: 8px; font-size: 13px; color: rgba(253,251,4,.75); }
+    .drip { width: 46px; height: 46px; margin: 0 auto 16px; border-radius: 50% 50% 50% 0; background: var(--yellow); transform: rotate(-45deg); animation: drip 1.6s var(--ease) infinite; }
+    @keyframes drip { 0%,100% { transform: rotate(-45deg) translateY(0) scale(1) } 50% { transform: rotate(-45deg) translate(6px,-6px) scale(1.12) } }
+    .versions { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+    .vtab { padding: 7px 12px; border-radius: 999px; border: 1.5px solid var(--line); font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; transition: background .2s, border-color .2s; }
+    .vtab[aria-selected="true"] { background: var(--ink); color: var(--yellow); border-color: var(--ink); }
+    .vtab .kept { margin-left: 4px; }
+    .player-actions { display: flex; gap: 8px; margin-top: 10px; }
+    .player-actions .btn { flex: 1; padding: 10px 12px; font-size: 13px; }
+
+    .detail { padding: 22px 24px 24px; display: grid; gap: 22px; }
+    .detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .detail-head h3 { font-family: var(--display); font-style: italic; font-weight: 900; font-size: 28px; line-height: 1.1; }
+    .detail-head .meta { color: var(--ink-2); font-size: 13px; margin-top: 4px; }
+    .status { display: inline-flex; align-items: center; gap: 7px; padding: 6px 11px; border-radius: 999px; font-size: 12px; font-weight: 700; background: var(--cream); border: 1.5px solid var(--line); white-space: nowrap; }
+    .status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-3); }
+    .status.live .dot { background: var(--ink); animation: pulse 1.2s ease-in-out infinite; }
+    .status.ready { background: var(--yellow); border-color: var(--ink); }
+    .status.ready .dot { background: var(--ok); }
+    .status.bad .dot { background: var(--warn); }
+    @keyframes pulse { 50% { transform: scale(1.6); opacity: .4 } }
+
+    .label { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 8px; }
+    .why { border: 2px solid var(--ink); border-radius: var(--r-lg); padding: 16px 18px; background: var(--yellow); }
+    .why .technique { font-family: var(--display); font-style: italic; font-weight: 900; font-size: 22px; line-height: 1.15; }
+    .why .evidence { margin-top: 6px; font-size: 13px; font-weight: 600; }
+    .why .evidence a { text-underline-offset: 3px; }
+    .why p { margin-top: 10px; font-size: 14px; color: var(--ink); }
+    .why .muted { color: var(--ink-2); font-size: 13px; margin-top: 8px; }
+    .proof { margin-top: 12px; background: #fff; border: 1.5px solid var(--ink); border-radius: var(--r-md); padding: 10px 12px; }
+    .proof-k { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
+    .proof-v { margin-top: 4px; font-size: 14px; }
+    .proof-v a { font-weight: 700; text-underline-offset: 3px; }
+    .proof-s { margin-top: 4px; font-size: 12px; color: var(--ink-2); }
+
+    .stages { display: grid; gap: 0; }
+    .stage { display: grid; grid-template-columns: 22px 1fr auto; gap: 12px; align-items: start; padding: 10px 0; border-top: 1px solid var(--line); font-size: 14px; }
+    .stage:first-child { border-top: 0; }
+    .stage .tick { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--line); margin-top: 2px; display: grid; place-items: center; }
+    .stage.done .tick { background: var(--ink); border-color: var(--ink); }
+    .stage.done .tick::after { content: ""; width: 6px; height: 3px; border-left: 2px solid var(--yellow); border-bottom: 2px solid var(--yellow); transform: rotate(-45deg) translate(1px, -1px); }
+    .stage.live .tick { border-color: var(--ink); border-top-color: transparent; animation: spin .8s linear infinite; }
+    .stage.bad .tick { background: var(--warn); border-color: var(--warn); }
+    @keyframes spin { to { transform: rotate(360deg) } }
+    .stage .what b { font-weight: 700; }
+    .stage .what small { display: block; color: var(--ink-2); font-size: 13px; }
+    .stage .ms { color: var(--ink-3); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+    .clips { display: grid; gap: 6px; }
+    .clip { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; padding: 9px 12px; border-radius: var(--r-sm); background: var(--cream); border: 1px solid var(--line); }
+    .clip .n { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .clip .m { color: var(--ink-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .ai { display: inline-block; padding: 1px 7px; border-radius: 999px; background: var(--ink); color: var(--yellow); font-size: 11px; font-weight: 700; letter-spacing: .02em; }
+
+    .chat { display: grid; gap: 8px; max-height: 280px; overflow-y: auto; padding-right: 4px; }
+    .bubble { max-width: 82%; padding: 9px 13px; border-radius: 18px; font-size: 14px; line-height: 1.4; white-space: pre-wrap; word-wrap: break-word; }
+    .bubble.you { justify-self: end; background: var(--ink); color: var(--yellow); border-bottom-right-radius: 6px; }
+    .bubble.sticky { justify-self: start; background: var(--cream); border: 1px solid var(--line); border-bottom-left-radius: 6px; }
+    .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+    .chip { padding: 7px 11px; border-radius: 999px; border: 1.5px solid var(--line); background: #fff; font-size: 13px; font-weight: 600; transition: border-color .2s, transform .3s var(--taffy); }
+    .chip:hover { border-color: var(--ink); transform: translateY(-1px); }
+    .composer { display: flex; gap: 8px; }
+
+    .history { margin: 34px auto 0; max-width: 1040px; }
+    .history h4 { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); margin: 0 4px 10px; }
+    .hrow { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; padding: 14px 16px; border-radius: var(--r-md); background: rgba(255,255,255,.7); border: 1.5px solid transparent; margin-bottom: 8px; transition: border-color .2s, transform .35s var(--taffy), background .2s; }
+    .hrow:hover { border-color: var(--ink); transform: translateX(3px); background: #fff; }
+    .hrow[aria-current="true"] { border-color: var(--ink); background: #fff; }
+    .hrow .t { flex: 1; min-width: 0; }
+    .hrow .t b { display: block; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .hrow .t small { color: var(--ink-2); font-size: 12px; }
+
+    footer { text-align: center; color: var(--ink-2); font-size: 12px; padding: 48px 20px 40px; }
+    footer b { color: var(--ink); }
+
+    .toast {
+      position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px); opacity: 0;
+      background: var(--ink); color: var(--yellow); padding: 12px 18px; border-radius: 999px;
+      font-size: 14px; font-weight: 600; box-shadow: var(--shadow); pointer-events: none;
+      transition: opacity .3s var(--ease), transform .45s var(--taffy); max-width: calc(100vw - 32px); text-align: center;
+    }
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+    @media (max-width: 860px) {
+      .studio { grid-template-columns: 1fr; }
+      .player { position: static; max-width: 380px; margin: 0 auto; width: 100%; }
+    }
+    @media (max-width: 520px) {
+      .drop { padding: 22px 16px 18px; border-radius: 24px; }
+      .drop .row { flex-direction: column; }
+      .detail { padding: 18px 16px; }
+      .topbar .pill span.long { display: none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <img class="mark" src="/assets/sticky-mark.svg" alt="sticky" width="66" height="30" />
+      <a class="pill" id="smsPill" href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>
+        <span class="long">Text footage to</span> <span id="lineLabel">sticky</span>
+      </a>
+    </div>
+
+    <section class="hero">
+      <img class="hero-logo" id="heroLogo" src="/assets/sticky-logo.gif" alt="sticky" width="760" height="407" />
+      <h1>Drop raw footage. Get the reel.</h1>
+      <p>Sticky watches and listens, finds the strongest moment, and cuts it using an editing technique that's working on Instagram this week. No caption needed.</p>
+      <div class="sms" id="smsLine"></div>
+    </section>
+
+    <section class="drop" id="drop" aria-label="Upload footage">
+      <div class="well" id="well" role="button" tabindex="0" aria-describedby="dropSub">
+        <div class="icon" aria-hidden="true">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>
+        </div>
+        <h2>Drop your clips</h2>
+        <div class="sub" id="dropSub">1–3 phone videos · up to 60 seconds total · .mov or .mp4</div>
+      </div>
+      <div class="row">
+        <input class="field" id="direction" type="text" maxlength="300" placeholder="Optional direction, e.g. “Keep the reveal for the end”" aria-label="Optional direction" />
+        <button class="btn primary" id="chooseBtn" type="button">Choose videos</button>
+      </div>
+      <input type="file" id="fileInput" class="hidden" accept="video/*" multiple />
+      <div class="uploads" id="uploads" aria-live="polite"></div>
+    </section>
+
+    <section class="studio hidden" id="studio" aria-live="polite">
+      <div class="panel player">
+        <div class="screen" id="screen"></div>
+        <div class="versions" id="versions" role="tablist" aria-label="Versions"></div>
+        <div class="player-actions">
+          <button class="btn yellow" id="keepBtn" type="button">Keep this one</button>
+          <a class="btn" id="downloadBtn" download>Download</a>
+        </div>
+        <button class="btn primary" id="liveBtn" type="button" style="width:100%;margin-top:8px">Edit live with your team</button>
+      </div>
+
+      <div class="panel detail">
+        <div class="detail-head">
+          <div>
+            <h3 id="projTitle">Your reel</h3>
+            <div class="meta" id="projMeta"></div>
+          </div>
+          <span class="status" id="projStatus"><span class="dot"></span><span id="projStatusText">Waiting</span></span>
+        </div>
+
+        <div id="whyWrap">
+          <div class="label">Why this cut</div>
+          <div class="why" id="why"></div>
+        </div>
+
+        <div>
+          <div class="label">Edit chain</div>
+          <div class="stages" id="stages"></div>
+        </div>
+
+        <div>
+          <div class="label">Raw footage</div>
+          <div class="clips" id="clips"></div>
+        </div>
+
+        <div>
+          <div class="label">Talk to the editor</div>
+          <div class="chat" id="chat"></div>
+          <div class="chips" id="chips" style="margin-top:12px">
+            <button class="chip" type="button" data-say="Why this cut?">Why this cut?</button>
+            <button class="chip" type="button" data-say="Show the object first">Show the object first</button>
+            <button class="chip" type="button" data-say="Make it eight seconds">Make it 8 seconds</button>
+            <button class="chip" type="button" data-say="Mute the first shot">Mute the first shot</button>
+            <button class="chip" type="button" data-say="Lead with my last line">Lead with my last line</button>
+            <button class="chip" type="button" data-say="NEW REEL">New reel</button>
+          </div>
+          <form class="composer" id="composer" autocomplete="off">
+            <input class="field" id="say" maxlength="500" placeholder="Text a change, like you would in iMessage" aria-label="Message the editor" />
+            <button class="btn primary" type="submit">Send</button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <section class="history hidden" id="history">
+      <h4>Earlier reels</h4>
+      <div id="historyList"></div>
+    </section>
+
+    <footer>
+      Trends are editorial observations from public, dated Instagram roundups (Later, New Engen), never a viral score.
+      <br />Your clips stay yours; originals are kept untouched. <b>sticky</b>
+    </footer>
+  </div>
+
+  <div class="toast" id="toast" role="status"></div>
+
+  <script>
+  (() => {
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const hex = (n) => Array.from(crypto.getRandomValues(new Uint8Array(n)), (b) => b.toString(16).padStart(2, '0')).join('');
+    const fmt = (ms) => { const s = Math.round((ms || 0) / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+    const secs = (ms) => (ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms)}ms`);
+    const ago = (iso) => { const s = (Date.now() - new Date(iso).getTime()) / 1000; if (s < 60) return 'just now'; if (s < 3600) return `${Math.floor(s / 60)}m ago`; if (s < 86400) return `${Math.floor(s / 3600)}h ago`; return new Date(iso).toLocaleDateString(); };
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    let thread = null;
+    // #t=<thread> opens a thread on another device (the link is the credential, like a share link).
+    const fromHash = /^#t=([a-f0-9]{32})$/.exec(location.hash)?.[1];
+    if (fromHash) { thread = fromHash; try { localStorage.setItem('sticky.thread', thread); } catch {} history.replaceState(null, '', location.pathname); }
+    if (!thread) try { thread = localStorage.getItem('sticky.thread'); } catch {}
+    if (!/^[a-f0-9]{32}$/.test(thread || '')) { thread = hex(16); try { localStorage.setItem('sticky.thread', thread); } catch {} }
+    const api = (p) => `/web/threads/${thread}${p}`;
+
+    let state = null;
+    let selectedProject = null;
+    let selectedVersion = null;
+    let lastSeenReplies = 0;
+    let uploading = false;
+    let pollTimer = null;
+
+    // ---------- toast ----------
+    const toast = (msg) => { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 3200); };
+
+    // ---------- animated logo ----------
+    // The wordmark drips once on load; click (or hover after it settles) to drip again.
+    const logo = $('heroLogo');
+    const LOGO = '/assets/sticky-logo.gif';
+    let lastDrip = Date.now();
+    const drip = () => { if (Date.now() - lastDrip < 2600) return; lastDrip = Date.now(); logo.src = `${LOGO}?d=${lastDrip}`; };
+    if (reduced) logo.src = '/assets/sticky-mark.svg';
+    else { logo.addEventListener('click', drip); logo.addEventListener('mouseenter', drip); }
+
+    // ---------- drop zone ----------
+    const drop = $('drop');
+    const well = $('well');
+    const fileInput = $('fileInput');
+    const splat = (x, y) => {
+      if (reduced) return;
+      const r = drop.getBoundingClientRect();
+      const s = document.createElement('span');
+      s.className = 'splat';
+      s.style.left = `${(x ?? r.left + r.width / 2) - r.left}px`;
+      s.style.top = `${(y ?? r.top + r.height / 2) - r.top}px`;
+      drop.appendChild(s);
+      setTimeout(() => s.remove(), 800);
+    };
+    well.addEventListener('click', (e) => { splat(e.clientX, e.clientY); fileInput.click(); });
+    well.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); } });
+    $('chooseBtn').addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', () => { handleFiles(fileInput.files); fileInput.value = ''; });
+    ['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); }));
+    ['dragleave', 'dragend'].forEach((ev) => drop.addEventListener(ev, () => drop.classList.remove('over')));
+    drop.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('over'); splat(e.clientX, e.clientY); handleFiles(e.dataTransfer.files); });
+
+    const CHUNK = 8 * 1024 * 1024;
+    async function uploadFile(file, row) {
+      const uploadId = hex(16);
+      let offset = 0;
+      while (offset < file.size) {
+        const end = Math.min(file.size, offset + CHUNK);
+        let res;
+        for (let attempt = 0; attempt < 4; attempt++) {
+          try {
+            res = await fetch(api(`/uploads/${uploadId}?offset=${offset}&total=${file.size}`), { method: 'POST', body: file.slice(offset, end) });
+            if (res.ok || res.status === 409) break;
+          } catch {}
+          await new Promise((r) => setTimeout(r, 600 * (attempt + 1)));
+        }
+        if (!res) throw new Error('network');
+        const body = await res.json().catch(() => ({}));
+        if (res.status === 409 && Number.isFinite(body.size)) { offset = body.size; continue; }
+        if (!res.ok) throw new Error(body.error || `upload failed (${res.status})`);
+        offset = body.size;
+        row.querySelector('i').style.width = `${Math.round((offset / file.size) * 100)}%`;
+        row.querySelector('.pct').textContent = `${Math.round((offset / file.size) * 100)}%`;
+      }
+      return { uploadId, name: file.name, mime: file.type || (file.name.toLowerCase().endsWith('.mov') ? 'video/quicktime' : 'video/mp4'), total: file.size };
+    }
+
+    async function handleFiles(fileList) {
+      if (uploading) return toast('One moment, still uploading.');
+      const files = Array.from(fileList || []).filter((f) => f.type.startsWith('video/') || /\.(mov|mp4|m4v)$/i.test(f.name));
+      if (!files.length) return toast('Drop a video file (.mov or .mp4).');
+      if (files.length > 3) toast('Using the first three clips.');
+      const chosen = files.slice(0, 3);
+      if (chosen.some((f) => f.size > 100 * 1024 * 1024)) return toast('Each clip can be up to 100 MB.');
+      uploading = true;
+      $('chooseBtn').disabled = true;
+      const box = $('uploads');
+      box.innerHTML = chosen.map((f, i) => `<div class="up" data-i="${i}"><span class="name">${esc(f.name)}</span><span class="pct">0%</span><span class="bar"><i></i></span></div>`).join('');
+      try {
+        const clips = await Promise.all(chosen.map((f, i) => uploadFile(f, box.querySelector(`[data-i="${i}"]`))));
+        const caption = $('direction').value.trim();
+        const res = await fetch(api('/clips'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clips, caption }) });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'could not start the cut');
+        $('direction').value = '';
+        toast('Stuck. Watching your footage…');
+        selectedProject = null; // follow the new project
+        selectedVersion = null;
+        setTimeout(() => { box.innerHTML = ''; }, 1200);
+        poll(true);
+      } catch (err) {
+        toast(`Upload failed: ${err.message}`);
+      } finally {
+        uploading = false;
+        $('chooseBtn').disabled = false;
+      }
+    }
+
+    // ---------- talking to the editor ----------
+    async function say(text) {
+      const t = text.trim();
+      if (!t) return;
+      const res = await fetch(api('/messages'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: t }) });
+      if (!res.ok) return toast('Could not send that. Try again.');
+      if (t.toUpperCase() === 'NEW REEL') { selectedProject = null; selectedVersion = null; }
+      poll(true);
+    }
+    $('composer').addEventListener('submit', (e) => { e.preventDefault(); const i = $('say'); say(i.value); i.value = ''; });
+    $('chips').addEventListener('click', (e) => { const b = e.target.closest('[data-say]'); if (b) say(b.dataset.say); });
+    $('keepBtn').addEventListener('click', () => say('KEEP'));
+    // Opens this reel in a live session (camera, pointing, voice, notes); this browser is the host.
+    $('liveBtn').addEventListener('click', async () => {
+      if (!selectedProject) return;
+      const res = await fetch('/live-api/open', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ thread, projectId: selectedProject }) });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || !body.url) return toast('Couldn’t open a live session for this reel.');
+      location.href = body.url;
+    });
+
+    // ---------- derived status ----------
+    const STAGE_LABEL = { load: 'Loading clips', gemini: 'Gemini 4 is watching', render: 'Cutting', probe: 'Checking the export', store: 'Saving', deliver: 'Delivering', done: 'Done' };
+    function statusOf(p) {
+      if (!p) return { text: 'Waiting', cls: '' };
+      const running = p.jobs.find((j) => j.status === 'running');
+      const queued = p.jobs.find((j) => j.status === 'queued');
+      const pendingClips = p.sources.filter((s) => s.status === 'pending' || s.status === 'downloading').length;
+      if (p.state === 'collecting' || pendingClips) return { text: pendingClips ? 'Reading your clips' : 'Collecting clips', cls: 'live' };
+      if (running) return { text: running.kind === 'revise' ? `Revising · ${STAGE_LABEL[running.stage] || 'working'}` : (STAGE_LABEL[running.stage] || 'Working'), cls: 'live' };
+      if (queued) return { text: 'Up next', cls: 'live' };
+      if (p.state === 'failed') return { text: 'Could not cut', cls: 'bad' };
+      if (p.versions.length) return { text: `Ready · v${p.versions[p.versions.length - 1].versionNo}`, cls: 'ready' };
+      if (p.state === 'closed') return { text: 'Closed', cls: '' };
+      return { text: 'Working', cls: 'live' };
+    }
+    const busy = (p) => p && statusOf(p).cls === 'live';
+
+    // ---------- render ----------
+    function render() {
+      if (!state) return;
+      const line = state.line;
+      if (line) {
+        const pretty = line.replace(/^\+1(\d{3})(\d{3})(\d{4})$/, '+1 ($1) $2-$3');
+        $('lineLabel').textContent = pretty;
+        // The free line only answers people on its list, so texting starts at /join (10 seconds, one tap).
+        $('smsPill').href = '/join';
+        $('smsLine').innerHTML = `On your phone? <a href="/join">Get on Sticky's line</a> and text your footage to ${esc(pretty)}. Works in group chats too.`;
+      }
+      const projects = state.projects;
+      if (!projects.length) { $('studio').classList.add('hidden'); $('history').classList.add('hidden'); return; }
+      const current = projects.find((p) => p.id === selectedProject) || projects.find((p) => p.id === state.currentProjectId) || projects[0];
+      selectedProject = current.id;
+      $('studio').classList.remove('hidden');
+
+      // header
+      const st = statusOf(current);
+      $('projStatus').className = `status ${st.cls}`;
+      $('projStatusText').textContent = st.text;
+      const firstClip = current.sources[0];
+      $('projTitle').textContent = firstClip?.name ? firstClip.name.replace(/\.[^.]+$/, '') : 'Your reel';
+      const total = current.sources.reduce((s, c) => s + (c.duration_ms || 0), 0);
+      $('projMeta').textContent = `${ago(current.created_at)} · ${current.sources.length} clip${current.sources.length === 1 ? '' : 's'}${total ? ` · ${fmt(total)} of footage` : ''}`;
+
+      // versions + player
+      const versions = current.versions;
+      if (!versions.find((v) => v.versionNo === selectedVersion)) selectedVersion = versions.length ? versions[versions.length - 1].versionNo : null;
+      $('versions').innerHTML = versions.map((v) => `<button class="vtab" role="tab" aria-selected="${v.versionNo === selectedVersion}" data-v="${v.versionNo}">v${v.versionNo} · ${fmt(v.durationMs)}${v.kept ? '<span class="kept">★</span>' : ''}</button>`).join('');
+      const v = versions.find((x) => x.versionNo === selectedVersion);
+      $('liveBtn').classList.toggle('hidden', !v);
+      const screen = $('screen');
+      const playing = screen.querySelector('video');
+      if (v) {
+        if (!playing || playing.dataset.src !== v.url) {
+          screen.innerHTML = `<video controls playsinline loop preload="auto" data-src="${esc(v.url)}" src="${esc(v.url)}"></video>`;
+          const vid = screen.querySelector('video');
+          vid.play().catch(() => {});
+        }
+        $('downloadBtn').href = v.url;
+        $('downloadBtn').setAttribute('download', `sticky-v${v.versionNo}.mp4`);
+        $('downloadBtn').classList.remove('hidden');
+        $('keepBtn').disabled = v.kept;
+        $('keepBtn').textContent = v.kept ? 'Kept ★' : 'Keep this one';
+      } else {
+        screen.innerHTML = `<div class="wait"><div class="drip"></div><b>${esc(st.cls === 'bad' ? 'That one didn’t cut.' : 'Cutting your reel')}</b><span>${esc(st.text)}</span></div>`;
+        $('downloadBtn').classList.add('hidden');
+        $('keepBtn').disabled = true;
+      }
+
+      // why
+      if (v) {
+        const t = v.technique;
+        const dated = t.kind === 'dated';
+        $('why').innerHTML = `
+          <div class="technique">${esc(t.title)}</div>
+          <div class="evidence">${dated
+            ? `${esc(t.evidence)} · <a href="${esc(t.url)}" target="_blank" rel="noopener">source</a>`
+            : `Evergreen technique · no fresh trend fit this footage`}</div>
+          <p>${esc(v.explanation)}</p>
+          ${t.hookEvidence ? `<div class="proof">
+            <div class="proof-k">Opening borrowed from a measured outlier</div>
+            <div class="proof-v"><a href="${esc(t.hookEvidence.postLink)}" target="_blank" rel="noopener">@${esc(t.hookEvidence.handle)}</a> · <b>${esc(t.hookEvidence.views)}</b> views on ${esc(t.hookEvidence.followers)} followers · <b>${esc(t.hookEvidence.viewsPerFollower)}×</b> their following · ${esc({ instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube Shorts' }[t.hookEvidence.platform] || t.hookEvidence.platform)}</div>
+            <div class="proof-s">Same opening: ${esc(t.hookEvidence.sharedPattern)} · real counts from Viral Outliers' trending feed, not a prediction for your reel</div>
+          </div>` : ''}
+          ${v.direction ? `<div class="muted">Your note: “${esc(v.direction)}”</div>` : ''}
+          <div class="muted">${v.shots} shot${v.shots === 1 ? '' : 's'} · ${fmt(v.durationMs)}${v.mutedShots ? ` · ${v.mutedShots} muted` : ''}${v.generatedShots ? ` · <span class="ai">${v.generatedShots} AI-made shot${v.generatedShots === 1 ? '' : 's'}</span>` : ''} · hard cuts</div>
+          ${v.music ? `<div class="muted"><span class="ai">AI music</span> Lyria: ${esc(v.music.label)} · ${v.music.mode === 'replace' ? 'replaces the original sound' : 'under your original audio'}</div>` : ''}`;
+        $('whyWrap').classList.remove('hidden');
+      } else {
+        $('whyWrap').classList.add('hidden');
+      }
+
+      // edit chain
+      const stages = [];
+      const clipsIn = current.sources.filter((s) => s.status === 'normalized').length;
+      stages.push({ cls: clipsIn === current.sources.length && clipsIn ? 'done' : (current.sources.some((s) => s.status === 'failed') ? 'bad' : 'live'), what: `<b>Footage in</b><small>${clipsIn}/${current.sources.length} clip${current.sources.length === 1 ? '' : 's'} normalized · rotation, frame rate and audio fixed</small>`, ms: '' });
+      let vno = 0;
+      for (const j of current.jobs) {
+        const ms = Object.values(j.stage_ms || {}).reduce((a, b) => a + b, 0);
+        const unsupported = (j.error || '').startsWith('unsupported:');
+        if (j.status === 'done' && !unsupported) vno += 1;
+        const label = j.kind === 'v1'
+          ? `<b>${vno && j.status === 'done' ? `v${vno} · ` : ''}First cut</b><small>${j.direction ? `Direction: “${esc(j.direction.split('\n').join(' · '))}”` : 'No direction, decided from the footage'}</small>`
+          : `<b>${j.status === 'done' && !unsupported ? `v${vno} · ` : ''}“${esc(j.direction)}”</b><small>${unsupported ? esc(j.error.replace('unsupported: ', '')) : j.status === 'failed' ? 'Could not apply that change; the last cut is unchanged.' : 'Targeted change; untouched shots keep their exact boundaries.'}</small>`;
+        const cls = j.status === 'done' ? (unsupported ? 'bad' : 'done') : j.status === 'running' || j.status === 'queued' ? 'live' : j.status === 'failed' ? 'bad' : '';
+        stages.push({ cls, what: label, ms: ms ? secs(ms) : (j.status === 'running' ? STAGE_LABEL[j.stage] || '' : '') });
+      }
+      $('stages').innerHTML = stages.map((s) => `<div class="stage ${s.cls}"><span class="tick"></span><span class="what">${s.what}</span><span class="ms">${esc(s.ms)}</span></div>`).join('');
+
+      // clips
+      $('clips').innerHTML = current.sources.map((s) => `<div class="clip"><span class="n">${s.generated ? '<span class="ai">AI</span> ' : ''}${esc(s.name || s.clip_id)}</span><span class="m">${s.duration_ms ? fmt(s.duration_ms) : '…'}${s.generated ? (/^AI-edited/.test(s.name || '') ? ' · edited with Gemini Omni' : ' · generated with Veo') : s.width ? ` · ${s.width > s.height ? 'landscape' : 'portrait'}` : ''}${s.has_audio === false ? ' · silent' : ''}</span></div>`).join('');
+
+      // conversation
+      const chat = $('chat');
+      const atBottom = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 40;
+      chat.innerHTML = state.conversation.slice(-30).map((m) => `<div class="bubble ${m.from}">${esc(m.body)}</div>`).join('');
+      if (atBottom) chat.scrollTop = chat.scrollHeight;
+      const replies = state.conversation.filter((m) => m.from === 'sticky');
+      if (replies.length > lastSeenReplies && lastSeenReplies > 0) toast(replies[replies.length - 1].body.split('\n')[0]);
+      lastSeenReplies = replies.length;
+
+      // history
+      const earlier = projects.filter((p) => p.id !== current.id);
+      $('history').classList.toggle('hidden', !earlier.length);
+      $('historyList').innerHTML = earlier.map((p) => {
+        const s = statusOf(p);
+        const name = p.sources[0]?.name?.replace(/\.[^.]+$/, '') || 'Reel';
+        return `<button class="hrow" data-p="${p.id}"><span class="t"><b>${esc(name)}</b><small>${ago(p.created_at)} · ${p.versions.length} version${p.versions.length === 1 ? '' : 's'}${p.kept_version ? ` · kept v${p.kept_version}` : ''}</small></span><span class="status ${s.cls}"><span class="dot"></span>${esc(s.text)}</span></button>`;
+      }).join('');
+    }
+
+    $('versions').addEventListener('click', (e) => { const b = e.target.closest('[data-v]'); if (!b) return; selectedVersion = Number(b.dataset.v); render(); });
+    $('historyList').addEventListener('click', (e) => { const b = e.target.closest('[data-p]'); if (!b) return; selectedProject = b.dataset.p; selectedVersion = null; render(); window.scrollTo({ top: $('studio').offsetTop - 16, behavior: reduced ? 'auto' : 'smooth' }); });
+
+    // ---------- polling ----------
+    async function poll(soon = false) {
+      clearTimeout(pollTimer);
+      if (soon) { pollTimer = setTimeout(poll, 700); return; }
+      try {
+        const res = await fetch(api(''), { cache: 'no-store' });
+        if (res.ok) {
+          const prevReady = state && state.projects.flatMap((p) => p.versions).length;
+          state = await res.json();
+          const nowReady = state.projects.flatMap((p) => p.versions).length;
+          if (prevReady !== null && prevReady !== undefined && nowReady > prevReady) selectedVersion = null; // jump to the newest cut
+          render();
+        }
+      } catch {}
+      const active = uploading || (state && state.projects.some(busy));
+      pollTimer = setTimeout(poll, active ? 1500 : 8000);
+    }
+    poll();
+  })();
+  </script>
+</body>
+</html>
