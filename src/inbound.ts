@@ -453,7 +453,9 @@ async function handleGroupText(p: ParsedLinq, project: any, receivedAt: Date, vo
 
   const holding = project?.state === 'collecting' && project.collect_deadline === null;
   const waiting = holding || (project?.held_notes?.length ?? 0) > 0;
-  if (waiting && isGoAhead(text)) return goAhead(chatId, project);
+  // A bare "go ahead" with nothing held means someone else's just went through: never route it to the model,
+  // which can read it as a fresh start and drop the version being made.
+  if (isGoAhead(text)) return waiting ? goAhead(chatId, project) : undefined;
   const hasCut = project ? Boolean(await latestVersion(project.id)) : false;
   let state: string = project ? project.state : 'no project yet';
   if (holding) state = 'holding clips from the group, waiting for someone to say go ahead';

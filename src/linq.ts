@@ -137,14 +137,28 @@ export async function openChat(from: string, to: string | string[], parts: Part[
 }
 
 /** Add someone to an iMessage group (Linq: the group already has 3+ members, all on iMessage). */
+/** Linq answers 409 (code 2009, "The chat is still being created") for a few seconds after a group starts. */
+const stillCreating = (r: LinqResponse) => r.status === 409 && r.body?.error?.code === 2009;
+
+/** Run a call on a just-made chat, waiting out "still being created" (up to about 20 seconds). */
+async function onceChatExists(call: () => Promise<LinqResponse>): Promise<LinqResponse> {
+  let r = await call();
+  for (const waitMs of [1_000, 2_000, 3_000, 5_000, 8_000]) {
+    if (!stillCreating(r)) break;
+    await new Promise((done) => setTimeout(done, waitMs));
+    r = await call();
+  }
+  return r;
+}
+
 export async function addParticipant(chatId: string, handle: string): Promise<void> {
-  const r = await linqCall('POST', `/chats/${encodeURIComponent(chatId)}/participants`, { handle }, 20_000);
+  const r = await onceChatExists(() => linqCall('POST', `/chats/${encodeURIComponent(chatId)}/participants`, { handle }, 20_000));
   if (!ok(r)) throw new Error(`add participant failed: HTTP ${r.status} ${JSON.stringify(r.body).slice(0, 200)}`);
 }
 
 /** A group's name in Messages. Naming also stops Linq reusing this chat for a later group of the same people. */
 export async function nameChat(chatId: string, displayName: string): Promise<void> {
-  const r = await linqCall('PUT', `/chats/${encodeURIComponent(chatId)}`, { display_name: displayName });
+  const r = await onceChatExists(() => linqCall('PUT', `/chats/${encodeURIComponent(chatId)}`, { display_name: displayName }));
   if (!ok(r)) throw new Error(`rename failed: HTTP ${r.status} ${JSON.stringify(r.body).slice(0, 200)}`);
 }
 

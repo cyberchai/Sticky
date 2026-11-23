@@ -168,7 +168,7 @@
       $('qr').src = `/join/g/${code}/qr.png`;
       $('qr').alt = `QR code: join the ${name} group chat`;
       $('title').hidden = false; $('title').textContent = name;
-      $('hint').textContent = 'Scan to join the group chat';
+      $('hint').textContent = desk ? `Scan to join, or text Sticky “Join group ${code}”` : 'Scan to join the group chat';
       $('lead').hidden = false; $('lead').textContent = `Join “${name}”`;
       $('go').textContent = 'Join the group chat';
       $('smsBtn').textContent = 'Send the join text';
