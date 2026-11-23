@@ -382,27 +382,49 @@ async function handleSay(project: any, person: Person, peer: string, text: strin
 }
 
 async function queueEdit(project: any, person: Person, peer: string, text: string, anchor: Anchor | null, latest: any): Promise<void> {
+  // Speech recognition often hands over the same sentence twice, and people repeat themselves while they
+  // wait: the same words from the same person a moment later are the request already being made.
+  const repeat = await one(
+    `SELECT id FROM sticky.jobs WHERE project_id = $1 AND channel = 'live' AND author_handle = $2
+       AND created_at > now() - interval '20 seconds' AND status IN ('queued','running')
+       AND position(lower($3::text) in lower(anchor->>'said')) > 0
+     LIMIT 1`,
+    [project.id, person.handle, text.trim()],
+  );
+  if (repeat) return;
   let direction = text;
-  let where: string | null = null;
   let stored: Record<string, unknown> = { said: text, ...anchor };
+  // Grounding a pointed "here" in scene terms takes seconds and only a change inside the footage needs it,
+  // so the job is queued at once and the spot is filled in when it lands (jobs.ts waits for it if needed).
+  let grounding: (() => Promise<void>) | null = null;
   if (anchor && DEICTIC.test(text)) {
     const viewed = anchor.versionNo && anchor.versionNo !== latest.version_no
       ? (await one(`SELECT * FROM sticky.versions WHERE project_id = $1 AND version_no = $2`, [project.id, anchor.versionNo])) ?? latest
       : latest;
     const sameCut = viewed.version_no === latest.version_no;
     const seg = sameCut ? segmentAt(latest.segments, anchor.atMs) : null;
-    if (!LOOK.test(text)) {
-      await emit(project.id, 'grounding', { said: text, handle: person.handle }, { from: peer });
-      try {
-        where = await ground(viewed.out_key, viewed.duration_ms, anchor.atMs, anchor.x, anchor.y, text);
-      } catch (err) {
-        log('live', { project: project.id, grounding: 'failed', error: errMsg(err).slice(0, 200) }, 'warn');
-      }
-    }
-    const spot = where ? `the spot is ${where}, ` : '';
     const cut = sameCut ? 'the current cut' : `v${viewed.version_no}`;
-    direction = `${text}\n[They pointed while saying this: ${spot}${pct(anchor.x)} from the left and ${pct(anchor.y)} from the top of the frame, at ${fmtMs(anchor.atMs)} into ${cut}${seg ? ` (shot ${seg.id})` : ''}. Put the change at that spot${seg ? ' and apply it to that shot' : ''} unless they said otherwise.]`;
-    stored = { ...stored, where, segmentId: seg?.id ?? null };
+    const pointed = (where: string | null) => `${text}\n[They pointed while saying this: ${where ? `the spot is ${where}, ` : ''}${pct(anchor.x)} from the left and ${pct(anchor.y)} from the top of the frame, at ${fmtMs(anchor.atMs)} into ${cut}${seg ? ` (shot ${seg.id})` : ''}. Put the change at that spot${seg ? ' and apply it to that shot' : ''} unless they said otherwise.]`;
+    direction = pointed(null);
+    stored = { ...stored, where: null, segmentId: seg?.id ?? null };
+    if (!LOOK.test(text)) {
+      stored.grounding = 'pending';
+      grounding = async () => {
+        let where: string | null = null;
+        try {
+          where = await ground(viewed.out_key, viewed.duration_ms, anchor.atMs, anchor.x, anchor.y, text);
+        } catch (err) {
+          log('live', { project: project.id, grounding: 'failed', error: errMsg(err).slice(0, 200) }, 'warn');
+        }
+        // Only this request's own lines change; a folded follow-up appended after them stays.
+        await q(
+          `UPDATE sticky.jobs SET direction = CASE WHEN $3::text IS NULL THEN direction ELSE replace(direction, $2, $4) END,
+             anchor = anchor || jsonb_build_object('grounding', 'done', 'where', $3::text)
+           WHERE anchor->>'grounding' = 'pending' AND position($2::text in direction) > 0 AND project_id = $1 AND channel = 'live'`,
+          [project.id, direction, where, pointed(where)],
+        );
+      };
+    }
   }
   // The reel being edited live is the host's current reel (otherwise the worker would supersede it).
   await q(`UPDATE sticky.threads SET current_project_id = $2 WHERE chat_id = $1 AND current_project_id IS DISTINCT FROM $2`, [project.chat_id, project.id]);
@@ -417,17 +439,16 @@ async function queueEdit(project: any, person: Person, peer: string, text: strin
      RETURNING id`,
     [project.id, direction, JSON.stringify(stored), person.handle],
   );
-  if (folded) {
-    await reply(project.id, `Updated ${person.name}'s pending edit: “${text}”.`, { jobId: folded.id });
-    return;
-  }
-  const job = await one(
+  const job = folded ?? await one(
     `INSERT INTO sticky.jobs (project_id, kind, direction, inbound_at, channel, author_handle, author_name, anchor)
      VALUES ($1, 'revise', $2, now(), 'live', $3, $4, $5) RETURNING id`,
     [project.id, direction, person.handle, person.name, JSON.stringify(stored)],
   );
-  const here = where ? ` “Here” = ${where}.` : '';
-  await reply(project.id, `On it: “${text}” from ${person.name}.${here}`, { jobId: job?.id });
+  if (grounding) {
+    await emit(project.id, 'grounding', { said: text, handle: person.handle }, { from: peer });
+    void grounding().catch((err) => log('live', { project: project.id, grounding: 'not saved', error: errMsg(err).slice(0, 200) }, 'warn'));
+  }
+  await reply(project.id, folded ? `Updated ${person.name}'s pending edit: “${text}”.` : `On it: “${text}” from ${person.name}.`, { jobId: job?.id });
 }
 
 // ---------------------------------------------------------------------------------------------

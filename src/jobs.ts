@@ -9,12 +9,13 @@
  */
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import { say } from './channel.js';
 import { COPY, LIMITS, config, plural, today } from './config.js';
 import { one, q, tx } from './db.js';
 import { deliverVersion } from './deliver.js';
 import { applyOps, totalMs, validateSegments, type Segment } from './edl.js';
-import { EditValidationError, planV1, revise, type ClipForModel, type GenerateRequest, type MusicRequest, type VisualEditRequest } from './gemini.js';
+import { EditValidationError, planV1, revise, reviseLook, type ClipForModel, type GenerateRequest, type MusicRequest, type ReviseInput, type ReviseResult, type VisualEditRequest } from './gemini.js';
 import { UPLOAD_SCHEME, intakeSource } from './intake.js';
 import { errMsg, last4, log } from './log.js';
 import { choicesStillNeeded, joinNotes, standingChoices } from './polls.js';
@@ -39,8 +40,33 @@ let ticking = false;
 
 let workerOn = false;
 
+/** This process, for the worker lease (Cloud Run names the revision). */
+const WORKER_ID = `${process.env.K_REVISION ?? 'local'}:${os.hostname()}:${process.pid}`;
+/** A lease holder that stops beating for this long (crashed, or a failed deploy) is taken over. */
+const LEASE_TTL_S = 30;
+let leader = false;
+
+/**
+ * Only the lease holder claims work. A starting instance takes the lease outright (the newest deploy wins);
+ * after that each tick renews it, and a standby takes it only once the holder has gone quiet.
+ */
+async function holdLease(takeover = false): Promise<boolean> {
+  const row = await one(
+    `INSERT INTO sticky.worker_lease (id, owner, beat_at) VALUES (1, $1, now())
+     ON CONFLICT (id) DO UPDATE SET owner = EXCLUDED.owner, beat_at = now()
+       WHERE $2 OR sticky.worker_lease.owner = EXCLUDED.owner OR sticky.worker_lease.beat_at < now() - make_interval(secs => $3)
+     RETURNING owner`,
+    [WORKER_ID, takeover, LEASE_TTL_S],
+  );
+  const held = row?.owner === WORKER_ID;
+  if (held !== leader) log('worker', { lease: held ? 'held' : 'lost', id: WORKER_ID });
+  leader = held;
+  return held;
+}
+
 export function startWorker(): void {
   workerOn = true;
+  void holdLease(true).catch((err) => log('worker', { lease: 'failed', error: errMsg(err) }, 'warn'));
   setInterval(() => void tick(), 1000).unref();
   setInterval(() => void trendTick(), 10 * 60 * 1000).unref();
   setTimeout(() => void trendTick(), 15_000).unref();
@@ -49,7 +75,7 @@ export function startWorker(): void {
 
 /** Called right after a video event is persisted, so intake starts without waiting for the tick. */
 export function kickIntake(): void {
-  if (!workerOn) return; // a standby leaves intake to the primary's ticker
+  if (!workerOn || !leader) return; // a standby leaves intake to the primary's ticker
   void pendingSources().catch((err) => log('worker', { kick: 'failed', error: errMsg(err) }, 'warn'));
 }
 
@@ -57,6 +83,7 @@ async function tick(): Promise<void> {
   if (ticking) return;
   ticking = true;
   try {
+    if (!(await holdLease())) return; // a replaced or standby instance: finish what it has, claim nothing new
     await pendingSources();
     await freezeProjects();
     await claimJobs();
@@ -182,6 +209,50 @@ async function loadClips(projectId: string, group = false): Promise<{ clips: Cli
   return { clips, normPaths, sourceIds: sources.map((s: any) => s.id), filmed };
 }
 
+/** Same value, whatever the key order (Postgres jsonb reorders keys, so a stored overlay never matches by text). */
+function sorted(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(sorted);
+  if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b)).map(([k, x]) => [k, sorted(x)]));
+  return v ?? null;
+}
+
+function sameJson(a: unknown, b: unknown): boolean {
+  return JSON.stringify(sorted(a)) === JSON.stringify(sorted(b));
+}
+
+/**
+ * Text, stickers, transitions, captions and music come back from a quick pass that doesn't re-watch the
+ * footage (a few seconds); anything else needs the full revision (half a minute). Both start together so a
+ * cut change isn't slowed down, except while the room is still grounding a pointed "here" (live.ts), which
+ * only the full revision uses: then it waits for the quick answer first, and for the spot.
+ */
+async function quickOrFullRevise(job: any, input: ReviseInput): Promise<ReviseResult> {
+  const grounding = job.anchor?.grounding === 'pending';
+  const full = grounding ? null : revise(input);
+  full?.catch(() => {}); // awaited below if the quick pass falls through; this keeps an early failure from going unhandled
+  const quick = await reviseLook(input).catch((err) => {
+    log('revise', { job: job.id, quick: 'failed', error: errMsg(err).slice(0, 200) }, 'warn');
+    return null;
+  });
+  if (quick) {
+    log('revise', { job: job.id, quick: 'used', ms: quick.ms });
+    return quick;
+  }
+  if (full) return full;
+  return revise({ ...input, direction: await groundedDirection(job.id, input.direction) });
+}
+
+/** live.ts grounds a pointed "here" after queuing the job: wait (briefly) for the spot to land in the direction. */
+async function groundedDirection(jobId: string, fallback: string): Promise<string> {
+  const until = Date.now() + 15_000;
+  while (Date.now() < until) {
+    const row = await one(`SELECT direction, anchor->>'grounding' AS grounding FROM sticky.jobs WHERE id = $1`, [jobId]);
+    if (!row || row.grounding !== 'pending') return row?.direction ?? fallback;
+    await new Promise((done) => setTimeout(done, 300));
+  }
+  return fallback;
+}
+
 async function runJob(job: any): Promise<void> {
   const stageMs: Record<string, number> = {};
   let stage = 'load';
@@ -291,7 +362,7 @@ async function runJob(job: any): Promise<void> {
         segments: segments.map((s) => `${s.id}:${s.clipId}[${s.inMs}-${s.outMs}]${s.audio === 'mute' ? 'M' : ''}`).join(' '),
       });
     } else {
-      const r = await timed('gemini', () => revise({
+      const r = await timed('gemini', () => quickOrFullRevise(job, {
         clips,
         analysis: project.analysis,
         segments: previous.segments,
@@ -339,6 +410,14 @@ async function runJob(job: any): Promise<void> {
           .catch((err) => log('reply', { job: job.id, unsupported: 'reply failed', error: errMsg(err) }, 'warn'));
         await q(`UPDATE sticky.jobs SET status = 'done', stage_ms = $2, model = $3, error = $4, finished_at = now() WHERE id = $1`, [job.id, stageMs, model, `unsupported: ${r.unsupportedReason}`]);
         await q(`UPDATE sticky.projects SET state = 'delivered' WHERE id = $1 AND state = 'rendering'`, [project.id]);
+        return;
+      } else if (!r.ops.length && r.segments === previous.segments && !r.music && sameJson(overlays, previous.overlays ?? []) && sameJson(transitions, previous.transitions ?? []) && sameJson(captions, previous.captions ?? null)) {
+        // Asked again for what the cut already has ("the flowers" right after the flower): no identical version.
+        await say(project.chat_id, `v${previous.version_no} already has that.`)
+          .catch((err) => log('reply', { job: job.id, unchanged: 'reply failed', error: errMsg(err) }, 'warn'));
+        await q(`UPDATE sticky.jobs SET status = 'done', stage_ms = $2, model = $3, error = 'unchanged', finished_at = now() WHERE id = $1`, [job.id, stageMs, model]);
+        await q(`UPDATE sticky.projects SET state = 'delivered' WHERE id = $1 AND state = 'rendering'`, [project.id]);
+        log('job', { job: job.id, outcome: 'unchanged', v: previous.version_no });
         return;
       } else {
         segments = r.segments;

@@ -384,6 +384,23 @@ const reviseSchema = {
   propertyOrdering: ['understanding', 'unsupportedReason', 'music', 'visualEdit', 'generate', 'ops', 'explanation'],
 };
 
+/** Music requests: shared by the full revision and the quick layers-only pass. */
+const MUSIC_RULES = `If the user asks for music, a soundtrack or a beat, set music (it can be combined with any other change in the same message):
+- action "add"; label: a short phrase ("animatronic funk"); prompt: an instrumental description for a music generator (genre, mood, tempo, instruments) that fits this footage. Never name artists, songs or bands; no vocals.
+- mode "under" keeps the original sound with the music low beneath it (default, always when someone speaks); "replace" only when they ask for music instead of the original sound.
+If they ask to remove or turn off the music: action "remove" (label/prompt may be empty strings, mode "under").
+Music is not an unsupported feature here.`;
+
+/** Text, stickers, transitions and captions: shared by the full revision and the quick layers-only pass. */
+const LAYER_RULES = `On-screen text and stickers are supported (overlays); the brief lists the current ones. If the user asks to add, change, move, restyle or remove on-screen text (a title, a name, a label, a line of words) or a sticker/emoji, set overlays to the COMPLETE new list: keep every overlay they didn't mention exactly as it is, with its id. Otherwise overlays = null. Overlays combine with any other change in the same message.
+- kind "text": text = exactly the words they asked for, their spelling and capitalization, no emoji (an emoji goes in its own sticker). kind "sticker": emoji = ONE emoji that best matches ("a heart sticker" → ❤️, "fire" → 🔥, "dog sticker" → 🐶); text null.
+- segmentId: the shot it appears on, or null for the whole reel (the default for a title or name with no time given; "at the start"/"at the end" = the first/last shot).
+- x, y: its centre as fractions of the frame (0,0 top-left, 1,1 bottom-right). A title defaults to 0.5, 0.16; a caption line to 0.5, 0.78; a sticker to wherever they say (corners about 0.2/0.8). If they pointed at a spot, use those exact fractions. Keep y ≤ 0.85 (app buttons cover the bottom).
+- size small|medium|large (titles large, labels medium, stickers medium). style (text only, null for stickers): "clean" white with a shadow (default), "box" dark on a white box, "dark" white on a dark box, "yellow" dark on yellow.
+- animation (how it enters): "fade" (text default), "pop" (sticker default), "slide_up", "slide_left", or "none".
+Transitions between shots are supported; the brief lists the current ones (each is the transition INTO that shot from the one before). If the user asks for transitions or smoother cuts, set transitions to the COMPLETE new list; "hard cuts"/"remove the transitions" = an empty list; otherwise null. Types: crossfade, dissolve, dip_to_black, dip_to_white, slide_left, slide_right, slide_up, slide_down, wipe, zoom, circle, whip. "Add transitions" with nothing specific = crossfade into every shot after the first. ms 250-600 (default 350; shorter for punchy, longer for soft). The first shot can't have one.
+Auto-captions of what's said are supported: they're generated from the speech and timed to it automatically. If the user asks for captions or subtitles, set captions {enabled: true, style, position, size} (defaults: style "clean", position "bottom", size "medium"; "Instagram style" = "box"); to turn them off, enabled false; to restyle them, enabled true with the new look; otherwise captions = null. Never type spoken words into overlays — captions do that.`;
+
 const REVISE_SYSTEM = `You revise an existing Reel cut with the smallest set of operations that does what the user asked.
 Operations act on the CURRENT segments by id, applied in order. Every op object lists all fields; set the ones the op uses and null the rest:
 - move {id, toIndex}: put that segment at 0-based position toIndex in the playback order.
@@ -392,11 +409,7 @@ Operations act on the CURRENT segments by id, applied in order. Every op object 
 - remove {id}
 - insert {clipId, inMs, outMs, audio, atIndex}: a new range from the footage at a 0-based position.
 Leave every segment the request does not concern exactly as it is. The user's request wins over the technique.
-If the user asks for music, a soundtrack or a beat, set music (it can be combined with any other change in the same message):
-- action "add"; label: a short phrase ("animatronic funk"); prompt: an instrumental description for a music generator (genre, mood, tempo, instruments) that fits this footage. Never name artists, songs or bands; no vocals.
-- mode "under" keeps the original sound with the music low beneath it (default, always when someone speaks); "replace" only when they ask for music instead of the original sound.
-If they ask to remove or turn off the music: action "remove" (label/prompt may be empty strings, mode "under").
-Music is not an unsupported feature here.
+${MUSIC_RULES}
 If the user asks to change how something INSIDE their footage looks (recolor clothing or an object, change the sky or weather, put an object or animal into the scene itself, restyle the look), return no ops and set visualEdit:
 - label: a short noun phrase for the change ("purple dress").
 - instruction: one instruction for a video-editing model that describes ONLY that change and says to keep everything else identical (people, faces, motion, framing, lighting).
@@ -406,14 +419,7 @@ If the user asks to add or show something that is NOT in the footage but could b
 - label: a short noun phrase ("a dog").
 - prompt: a vivid one-shot description for a video generator that matches this footage's setting, lighting and handheld-phone look; vertical 9:16; no people, no faces, no text or logos.
 - seconds: 4 unless they ask for longer; atIndex: 0-based position in the CURRENT order (current length = at the end); audio: "keep".
-On-screen text and stickers are supported (overlays); the brief lists the current ones. If the user asks to add, change, move, restyle or remove on-screen text (a title, a name, a label, a line of words) or a sticker/emoji, set overlays to the COMPLETE new list: keep every overlay they didn't mention exactly as it is, with its id. Otherwise overlays = null. Overlays combine with any other change in the same message.
-- kind "text": text = exactly the words they asked for, their spelling and capitalization, no emoji (an emoji goes in its own sticker). kind "sticker": emoji = ONE emoji that best matches ("a heart sticker" → ❤️, "fire" → 🔥, "dog sticker" → 🐶); text null.
-- segmentId: the shot it appears on, or null for the whole reel (the default for a title or name with no time given; "at the start"/"at the end" = the first/last shot).
-- x, y: its centre as fractions of the frame (0,0 top-left, 1,1 bottom-right). A title defaults to 0.5, 0.16; a caption line to 0.5, 0.78; a sticker to wherever they say (corners about 0.2/0.8). If they pointed at a spot, use those exact fractions. Keep y ≤ 0.85 (app buttons cover the bottom).
-- size small|medium|large (titles large, labels medium, stickers medium). style (text only, null for stickers): "clean" white with a shadow (default), "box" dark on a white box, "dark" white on a dark box, "yellow" dark on yellow.
-- animation (how it enters): "fade" (text default), "pop" (sticker default), "slide_up", "slide_left", or "none".
-Transitions between shots are supported; the brief lists the current ones (each is the transition INTO that shot from the one before). If the user asks for transitions or smoother cuts, set transitions to the COMPLETE new list; "hard cuts"/"remove the transitions" = an empty list; otherwise null. Types: crossfade, dissolve, dip_to_black, dip_to_white, slide_left, slide_right, slide_up, slide_down, wipe, zoom, circle, whip. "Add transitions" with nothing specific = crossfade into every shot after the first. ms 250-600 (default 350; shorter for punchy, longer for soft). The first shot can't have one.
-Auto-captions of what's said are supported: they're generated from the speech and timed to it automatically. If the user asks for captions or subtitles, set captions {enabled: true, style, position, size} (defaults: style "clean", position "bottom", size "medium"; "Instagram style" = "box"); to turn them off, enabled false; to restyle them, enabled true with the new look; otherwise captions = null. Never type spoken words into overlays — captions do that.
+${LAYER_RULES}
 If the request needs something that does not exist here (speed changes, color filters) or involves generating real or specific people, return no ops and set unsupportedReason to one short plain sentence saying what can't be done and why.
 explanation = ONE plain sentence describing the change.
 ${RULES}`;
@@ -439,7 +445,7 @@ export interface ReviseResult {
   ms: number;
 }
 
-export async function revise(input: {
+export interface ReviseInput {
   clips: ClipForModel[];
   analysis: Analysis | null;
   segments: Segment[];
@@ -447,15 +453,40 @@ export async function revise(input: {
   direction: string;
   overlays?: Overlay[];
   transitions?: Transition[];
-}): Promise<ReviseResult> {
-  const clipsInfo = clipInfosOf(input.clips);
-  const brief = `What the footage contains (from the first watch): ${JSON.stringify({ transcript: input.analysis?.transcript ?? [], moments: input.analysis?.moments ?? [] })}
+}
+
+function reviseBrief(input: ReviseInput): string {
+  return `What the footage contains (from the first watch): ${JSON.stringify({ transcript: input.analysis?.transcript ?? [], moments: input.analysis?.moments ?? [] })}
 Current cut (${totalMs(input.segments)} ms, technique "${input.techniqueTitle}"), in playback order:
 ${JSON.stringify(input.segments)}
 Current overlays (text and stickers): ${JSON.stringify(input.overlays ?? [])}
 Current transitions: ${JSON.stringify(input.transitions ?? [])}
 The user now says: "${input.direction}"`;
+}
 
+function musicOf(m: any): MusicRequest | null {
+  const wanted = m && (m.action === 'remove' || (m.action === 'add' && typeof m.prompt === 'string' && m.prompt.trim()));
+  if (!wanted) return null;
+  return { action: m.action, label: String(m.label || 'music').trim().slice(0, 60), prompt: String(m.prompt ?? '').trim().slice(0, 600), mode: m.mode === 'replace' ? 'replace' : 'under' };
+}
+
+/** Words that mean an overlay may go (removed, replaced or swapped), so dropping one from the list is intended. */
+const DROPS_OVERLAY = /\b(remove|delete|take|get rid|clear|drop|lose|ditch|no more|without|hide|replace|instead|swap|change|turn|switch|only|undo)\b/i;
+
+/**
+ * The model returns the COMPLETE overlay list and sometimes leaves out ones nobody mentioned ("the flowers"
+ * after a flower sticker came back with no stickers at all). Unless they asked for something to go, keep them.
+ */
+export function keepUnmentioned(current: Overlay[], next: Overlay[] | null, direction: string): Overlay[] | null {
+  if (!next || DROPS_OVERLAY.test(direction)) return next;
+  const ids = new Set(next.map((o) => o.id));
+  const dropped = current.filter((o) => !ids.has(o.id));
+  return dropped.length ? [...dropped, ...next] : next;
+}
+
+export async function revise(input: ReviseInput): Promise<ReviseResult> {
+  const clipsInfo = clipInfosOf(input.clips);
+  const brief = reviseBrief(input);
   let retryNote = '';
   let totalModelMs = 0;
   let lastErrors: string[] = [];
@@ -467,10 +498,7 @@ The user now says: "${input.direction}"`;
     // Nulls mean "not used by this op".
     const ops: Op[] = (Array.isArray(data?.ops) ? data.ops : []).map((o: Record<string, unknown>) =>
       Object.fromEntries(Object.entries(o ?? {}).filter(([, v]) => v !== null && v !== undefined)) as unknown as Op);
-    const m = data?.music;
-    const music: MusicRequest | null = m && (m.action === 'remove' || (m.action === 'add' && typeof m.prompt === 'string' && m.prompt.trim()))
-      ? { action: m.action, label: String(m.label || 'music').trim().slice(0, 60), prompt: String(m.prompt ?? '').trim().slice(0, 600), mode: m.mode === 'replace' ? 'replace' : 'under' }
-      : null;
+    const music = musicOf(data?.music);
     const ve = data?.visualEdit;
     const hasVisual = Boolean(ve && typeof ve.instruction === 'string' && ve.instruction.trim());
     const hasGenerate = Boolean(data?.generate && typeof data.generate.prompt === 'string' && data.generate.prompt.trim());
@@ -479,7 +507,7 @@ The user now says: "${input.direction}"`;
     const ov = Array.isArray(data?.overlays) ? normalizeOverlays(data.overlays, target) : null;
     const tr = Array.isArray(data?.transitions) ? normalizeTransitions(data.transitions, target) : null;
     const captions = normalizeCaptions(data?.captions);
-    const look = { overlays: ov?.overlays ?? null, transitions: tr?.transitions ?? null, captions };
+    const look = { overlays: keepUnmentioned(input.overlays ?? [], ov?.overlays ?? null, input.direction), transitions: tr?.transitions ?? null, captions };
     const lookErrors = [...(ov?.errors ?? []), ...(tr?.errors ?? [])];
     // Music, text, stickers, transitions or captions alone: the shots stay exactly as they are.
     if ((music || ov || tr || captions !== null) && !ops.length && !hasVisual && !hasGenerate && !lookErrors.length) {
@@ -520,6 +548,64 @@ The user now says: "${input.direction}"`;
     retryNote = `\n\nYour previous operations were rejected by the validator. Fix exactly these problems:\n- ${errors.join('\n- ')}`;
   }
   throw new EditValidationError(lastErrors);
+}
+
+const lookSchema = {
+  type: 'object',
+  properties: {
+    needsFootage: S.bool,
+    music: reviseSchema.properties.music,
+    overlays: reviseSchema.properties.overlays,
+    transitions: reviseSchema.properties.transitions,
+    captions: reviseSchema.properties.captions,
+    explanation: S.str,
+  },
+  required: ['needsFootage', 'explanation'],
+  propertyOrdering: ['needsFootage', 'music', 'overlays', 'transitions', 'captions', 'explanation'],
+};
+
+const LOOK_SYSTEM = `You make quick changes to the layers on top of an existing Reel: on-screen text and stickers, transitions, auto-captions and music. You can't see the footage and you can't change the cut itself.
+needsFootage = true when the request asks for ANYTHING else, alone or alongside a layer change: reordering, trimming, cutting, adding or removing moments, length, what it opens or ends on, muting, changing how something inside the footage looks (recolor, restyle, weather, putting something into the scene for real), generating a new shot, or placing anything by what happens in the footage ("when he laughs", "next to the dog"). Then leave every other field null.
+Putting a thing at a spot they pointed at ("put a flower here", "a heart there", "add a star right here", "the flowers") is a sticker of that thing (ONE emoji) at the exact pointed fractions, on the shot named in the brackets, unless they say to put it into the scene for real. Saying it again for the same spot doesn't add a second one.
+Otherwise needsFootage = false and set only the fields the request changes (null = unchanged).
+${MUSIC_RULES}
+${LAYER_RULES}
+explanation = ONE plain sentence describing the change.`;
+
+/**
+ * The quick pass: text, stickers, transitions, captions or music decided from the brief alone, without
+ * watching the footage again (seconds instead of the half-minute a full revision takes). Null when the
+ * request needs the footage or the answer doesn't validate; the caller then uses the full revision.
+ */
+export async function reviseLook(input: ReviseInput): Promise<ReviseResult | null> {
+  const { data, model, ms } = await generateJson<any>(
+    [config.gemini.fallbackModel],
+    [{ role: 'user', parts: [{ text: reviseBrief(input) }] }],
+    { systemInstruction: LOOK_SYSTEM, responseSchema: lookSchema },
+    20_000,
+    'revise_look',
+  );
+  if (data?.needsFootage !== false) return null;
+  const music = musicOf(data.music);
+  const ov = Array.isArray(data.overlays) ? normalizeOverlays(data.overlays, input.segments) : null;
+  const tr = Array.isArray(data.transitions) ? normalizeTransitions(data.transitions, input.segments) : null;
+  const captions = normalizeCaptions(data.captions);
+  if (ov?.errors.length || tr?.errors.length) return null;
+  if (!music && !ov && !tr && captions === null) return null;
+  return {
+    segments: input.segments,
+    unsupportedReason: null,
+    generate: null,
+    music,
+    overlays: keepUnmentioned(input.overlays ?? [], ov?.overlays ?? null, input.direction),
+    transitions: tr?.transitions ?? null,
+    captions,
+    explanation: String(data.explanation ?? '').trim(),
+    ops: [],
+    model,
+    attempts: 1,
+    ms,
+  };
 }
 
 // ---------------------------------------------------------------------------------------------
